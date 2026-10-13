@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roll the Ball</title>
+
+<!--
+  ==========================================================================
+  LIBRARIES THIS PAGE BORROWS
+  ==========================================================================
+  1. Three.js, version 0.186.1 (release r186)
+     Where from:  jsDelivr (a major CDN), copied from the official npm package
+     What it does: draws the 3D floor, ball and coins, with light and shadows.
+                   Everything named THREE below comes from it.
+
+  How it loads: newer versions of Three.js load as a "module". The
+  <script type="importmap"> below says "when the code asks for three, fetch it
+  from this exact address", so the version number lives in one place.
+  ==========================================================================
+
+  v1.0 - initial build: roll the ball with the arrow keys or WASD (or the
+         on-screen arrows on a phone), collect three spinning coins, win,
+         play again.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js"
+  }
+}
+</script>
+
+<style>
+  /* ---------- Page and layout ---------- */
+  :root { --ink: #1d2433; --paper: #f4f1ea; --accent: #e9a62b; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  h1 { margin: 4px 0; }
+  .how { margin: 4px 0 12px; }
+
+  /* ---------- The game area ----------
+     The 3D drawing fills this box. The score and the win message sit on
+     top of it. */
+  .game {
+    position: relative;
+    height: min(70vh, 560px);
+    border-radius: 14px;
+    overflow: hidden;
+    background: #9fd0e8;
+  }
+  .game canvas { display: block; width: 100%; height: 100%; }
+  .score {
+    position: absolute; top: 10px; left: 12px;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 6px 12px; border-radius: 999px;
+    font-weight: 700; font-size: 1.1rem;
+  }
+  .win {
+    position: absolute; inset: 0;
+    display: grid; place-content: center; text-align: center; gap: 12px;
+    background: rgba(29, 36, 51, 0.6); color: #fff;
+  }
+  .win[hidden] { display: none; }   /* without this, "display: grid" would beat hidden */
+  .win p { font-size: 1.8rem; font-weight: 700; margin: 0; }
+
+  button {
+    font: inherit; font-weight: 700;
+    padding: 10px 18px; border: 0; border-radius: 10px;
+    background: var(--accent); color: var(--ink); cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+  /* ---------- On-screen arrows, for phones and tablets ---------- */
+  .pad {
+    display: grid; grid-template-columns: repeat(3, 56px); gap: 6px;
+    justify-content: center; margin-top: 12px;
+  }
+  .pad button { padding: 0; height: 56px; font-size: 1.4rem; background: #fff; border: 2px solid var(--ink); }
+  .pad button:focus-visible { outline-color: var(--ink); }
+  .pad .up { grid-column: 2; }
+  .pad .left { grid-column: 1; grid-row: 2; }
+  .pad .down { grid-column: 2; grid-row: 2; }
+  .pad .right { grid-column: 3; grid-row: 2; }
+  /* A screen-reader-only class: read aloud, not shown. */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Roll the Ball</h1>
+  <p class="how">Roll with the <kbd>arrow keys</kbd> or <kbd>W A S D</kbd>. Collect all three coins.</p>
+
+  <div class="game" id="game" role="img" aria-label="A ball on a green floor with three gold coins spinning around it.">
+    <div class="score" aria-hidden="true">Coins: <span id="score">0</span> / 3</div>
+    <div class="win" id="win" hidden>
+      <p>You got them all!</p>
+      <button id="again">Play again</button>
+    </div>
+  </div>
+
+  <!-- Screen readers hear every change of score from here. -->
+  <p id="announce" class="sr-only" aria-live="polite"></p>
+
+  <!-- On-screen arrows. Hold one down to keep rolling. -->
+  <div class="pad" aria-label="On-screen arrows">
+    <button class="up" data-dir="up" aria-label="Roll up">↑</button>
+    <button class="left" data-dir="left" aria-label="Roll left">←</button>
+    <button class="down" data-dir="down" aria-label="Roll down">↓</button>
+    <button class="right" data-dir="right" aria-label="Roll right">→</button>
+  </div>
+</main>
+
+<script type="module">
+  // Borrow Three.js. The import map at the top says where "three" lives.
+  import * as THREE from 'three';
+
+  // ==================================================================
+  // GAME SETTINGS - change these numbers to change how the game feels
+  // ==================================================================
+  const FLOOR_SIZE = 20;      // the floor is 20 x 20 steps
+  const BALL_RADIUS = 0.6;
+  const PUSH = 0.012;         // how hard the keys push the ball
+  const FRICTION = 0.94;      // 1 = ice, smaller = stickier floor
+  const COIN_SPOTS = [[-6, -5], [6, -3], [-2, 6]];   // where the coins float
+
+  // ==================================================================
+  // THE 3D SETUP: a scene (the world), a camera (your eye) and a
+  // renderer (the thing that draws the scene into the page).
+  // ==================================================================
+  const box = document.getElementById('game');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#9fd0e8');
+
+  const camera = new THREE.PerspectiveCamera(50, box.clientWidth / box.clientHeight, 0.1, 100);
+  camera.position.set(0, 19, 17);   // up high and back, looking down at an angle
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(box.clientWidth, box.clientHeight);
+  renderer.shadowMap.enabled = true;
+  box.prepend(renderer.domElement);
+  renderer.domElement.setAttribute('aria-hidden', 'true');   // the box already describes it
+
+  // ---------- Light: a soft light everywhere, plus a "sun" that casts shadows ----------
+  scene.add(new THREE.HemisphereLight('#ffffff', '#55703a', 1.2));
+  const sun = new THREE.DirectionalLight('#ffffff', 2);
+  sun.position.set(5, 12, 6);
+  sun.castShadow = true;
+  sun.shadow.camera.left = -12; sun.shadow.camera.right = 12;
+  sun.shadow.camera.top = 12;   sun.shadow.camera.bottom = -12;
+  scene.add(sun);
+
+  // ---------- The floor ----------
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(FLOOR_SIZE, 0.5, FLOOR_SIZE),
+    new THREE.MeshStandardMaterial({ color: '#6aa84f' })
+  );
+  floor.position.y = -0.25;          // top surface sits at height 0
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // ---------- The ball ----------
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(BALL_RADIUS, 32, 16),
+    new THREE.MeshStandardMaterial({ color: '#d1495b', roughness: 0.4 })
+  );
+  ball.castShadow = true;
+  scene.add(ball);
+
+  // ---------- The coins: flat gold cylinders, stood on their edge ----------
+  const coinShape = new THREE.CylinderGeometry(0.7, 0.7, 0.15, 32);
+  const coinLook = new THREE.MeshStandardMaterial({ color: '#f2c14e', metalness: 0.6, roughness: 0.3 });
+  const coins = COIN_SPOTS.map(function ([x, z]) {
+    const coin = new THREE.Mesh(coinShape, coinLook);
+    coin.rotation.x = Math.PI / 2;   // stand it up like a wheel
+    coin.position.set(x, 1, z);
+    coin.castShadow = true;
+    scene.add(coin);
+    return coin;
+  });
+
+  // ==================================================================
+  // GAME STATE
+  // ==================================================================
+  let velocityX = 0, velocityZ = 0;  // how fast the ball is rolling
+  let score = 0;
+  let playing = true;
+  const held = { up: false, down: false, left: false, right: false };   // which arrows are held down
+
+  const scoreText = document.getElementById('score');
+  const announce = document.getElementById('announce');
+  const win = document.getElementById('win');
+  const again = document.getElementById('again');
+
+  // Put everything back where it started.
+  function reset() {
+    ball.position.set(0, BALL_RADIUS, 0);
+    velocityX = velocityZ = 0;
+    coins.forEach(function (coin) { coin.visible = true; });
+    score = 0;
+    scoreText.textContent = '0';
+    announce.textContent = 'New game. Coins: 0 of 3.';
+    win.hidden = true;
+    playing = true;
+  }
+
+  // ==================================================================
+  // CONTROLS: arrow keys and WASD. preventDefault stops the arrow keys
+  // from scrolling the page while you play.
+  // ==================================================================
+  const KEYS = {
+    ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
+    ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right'
+  };
+  window.addEventListener('keydown', function (event) {
+    const dir = KEYS[event.code];
+    if (dir) { held[dir] = true; event.preventDefault(); }
+  });
+  window.addEventListener('keyup', function (event) {
+    const dir = KEYS[event.code];
+    if (dir) held[dir] = false;
+  });
+
+  // The on-screen arrows: pressing one holds it down until you let go.
+  document.querySelectorAll('.pad button').forEach(function (button) {
+    const dir = button.dataset.dir;
+    button.addEventListener('pointerdown', function () { held[dir] = true; });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (name) {
+      button.addEventListener(name, function () { held[dir] = false; });
+    });
+  });
+
+  again.addEventListener('click', function () { reset(); again.blur(); });
+
+  // ==================================================================
+  // THE GAME LOOP: runs about 60 times a second.
+  // Each time: push the ball, slow it down a little, move it, keep it on
+  // the floor, spin the coins, check for collections, then draw.
+  // ==================================================================
+  let lastTime = performance.now();
+
+  function loop(now = performance.now()) {
+    // "step" is how many 60ths of a second have passed since the last frame.
+    // Some screens draw 60 times a second, some 120. Multiplying by step makes
+    // the ball roll at the same speed on all of them.
+    const step = Math.min((now - lastTime) / (1000 / 60), 3);
+    lastTime = now;
+
+    if (playing) {
+      // Push in the direction of any held arrow.
+      if (held.up) velocityZ -= PUSH * step;
+      if (held.down) velocityZ += PUSH * step;
+      if (held.left) velocityX -= PUSH * step;
+      if (held.right) velocityX += PUSH * step;
+
+      // Friction slows it a little every frame.
+      velocityX *= Math.pow(FRICTION, step);
+      velocityZ *= Math.pow(FRICTION, step);
+
+      ball.position.x += velocityX * step;
+      ball.position.z += velocityZ * step;
+
+      // Keep the ball on the floor: stop it at the edges.
+      const edge = FLOOR_SIZE / 2 - BALL_RADIUS;
+      if (Math.abs(ball.position.x) > edge) { ball.position.x = Math.sign(ball.position.x) * edge; velocityX = 0; }
+      if (Math.abs(ball.position.z) > edge) { ball.position.z = Math.sign(ball.position.z) * edge; velocityZ = 0; }
+
+      // Spin the ball so it looks like it is rolling, not sliding.
+      ball.rotation.z -= velocityX * step / BALL_RADIUS;
+      ball.rotation.x += velocityZ * step / BALL_RADIUS;
+
+      // Collect any coin the ball gets close to (measured flat, ignoring height).
+      coins.forEach(function (coin) {
+        if (!coin.visible) return;
+        const dx = coin.position.x - ball.position.x;
+        const dz = coin.position.z - ball.position.z;
+        if (Math.hypot(dx, dz) < BALL_RADIUS + 0.7) {
+          coin.visible = false;
+          score += 1;
+          scoreText.textContent = String(score);
+          announce.textContent = 'Coin collected. Coins: ' + score + ' of 3.';
+          if (score === coins.length) {
+            playing = false;
+            win.hidden = false;
+            announce.textContent = 'You got them all!';
+            again.focus();     // so Enter or Space plays again straight away
+          }
+        }
+      });
+    }
+
+    // Coins spin whether or not you are playing.
+    coins.forEach(function (coin) { coin.rotation.z += 0.04 * step; });
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  }
+
+  // Keep the drawing the right shape when the window changes size.
+  window.addEventListener('resize', function () {
+    camera.aspect = box.clientWidth / box.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(box.clientWidth, box.clientHeight);
+  });
+
+  reset();
+  loop();
+  window.gameStarted = true;   // tells the safety check below that everything loaded
+</script>
+
+<script>
+  // SAFETY CHECK: if Three.js never arrives (no internet, or a wrong
+  // address), the game code above cannot run at all. After a few seconds,
+  // say so on the page instead of leaving an empty box.
+  setTimeout(function () {
+    if (!window.gameStarted) {
+      document.getElementById('announce').textContent = '';
+      document.getElementById('game').insertAdjacentHTML('beforeend',
+        '<p class="score" style="top:50px">The 3D library did not load. Check your internet connection and refresh.</p>');
+    }
+  }, 5000);
+</script>
+</body>
+</html>

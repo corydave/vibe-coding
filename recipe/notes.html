@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notes - Peanut Butter Oatmeal Cookies</title>
+  <style>
+    /* Same look as the recipe page, so the two feel like one small site.
+       Later in the course this repetition becomes annoying enough to fix. */
+    :root {
+      --primary-color: #8d5524;
+      --page-bg: #fdf8f3;
+      --card-bg: #ffffff;
+      --text: #2b2118;
+      --border: #e5d9cc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      background: var(--page-bg);
+      color: var(--text);
+      line-height: 1.7;
+      margin: 0;
+      padding: 2rem 1rem 4rem;
+    }
+    .card {
+      max-width: 42rem;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem;
+    }
+    h1 { color: var(--primary-color); margin-top: 0; font-size: clamp(1.5rem, 5vw, 2.1rem); }
+    a { color: var(--primary-color); }
+    a:focus-visible { outline: 3px solid #ff9800; outline-offset: 2px; }
+    .nav { margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--border); }
+    li { margin-bottom: 0.6rem; }
+  </style>
+</head>
+
+<body>
+  <main class="card">
+    <h1>Notes</h1>
+
+    <ul>
+      <li>Natural peanut butter separates and makes the dough greasy. The cheap stuff works better here, which feels wrong but is true.</li>
+      <li>Ten minutes, not twelve. They keep cooking on the hot tray.</li>
+      <li>Doubling the batch does not double the baking time. Learned the hard way.</li>
+      <li>Quick oats make them cakey. Rolled oats make them chewy.</li>
+    </ul>
+
+    <nav class="nav">
+      <!-- The link back. Two pages, each pointing at the other, both sitting
+           in the same folder and finding each other by name alone. -->
+      <p><a href="index.html">&larr; Back to the recipe</a></p>
+    </nav>
+  </main>
+</body>
+</html>

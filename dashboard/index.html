@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spreadsheet Dashboard</title>
+
+<!--
+  ==========================================================================
+  LIBRARIES THIS PAGE BORROWS
+  ==========================================================================
+  1. Chart.js, version 4.5.1
+     Where from:  jsDelivr (a major CDN), copied from the official npm package
+     What it does: draws the bar chart and the line chart.
+
+  2. SheetJS (xlsx), version 0.20.3
+     Where from:  cdn.sheetjs.com - SheetJS's OWN site. The copies on cdnjs
+                  and jsDelivr stopped at version 0.18.5, which has known
+                  security problems, so this one comes from the official source.
+     What it does: reads the spreadsheet file, CSV or Excel, into rows.
+  ==========================================================================
+
+  v1.0 - initial build: load CSV or Excel, pick columns, four summary
+         numbers, bar and line charts, and a plain table of the data.
+-->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+  /* ---------- Colors, fonts, layout ---------- */
+  :root {
+    --ink: #1d2433;
+    --muted: #5b6475;
+    --paper: #ffffff;
+    --soft: #f1f4f8;
+    --line: #d5dbe5;
+    --accent: #264653;
+    --accent-2: #2a9d8f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--soft);
+    line-height: 1.5;
+  }
+  main { max-width: 1000px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { margin: 8px 0 4px; }
+  .privacy { color: var(--muted); margin-top: 0; }
+  .panel { background: var(--paper); border-radius: 12px; padding: 16px; margin: 16px 0; }
+
+  /* ---------- Loading a file ---------- */
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 22px; text-align: center; }
+  .drop.over { border-color: var(--accent-2); background: var(--soft); }
+  .file-label {
+    display: inline-block; padding: 8px 14px; border-radius: 8px;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  /* The real file input stays reachable by keyboard; the label is what shows. */
+  .file-label input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  .file-label:focus-within, select:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+  /* ---------- Column pickers ---------- */
+  .pickers { display: flex; flex-wrap: wrap; gap: 16px; }
+  .pickers label { font-weight: 600; display: block; }
+  select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); min-width: 180px; }
+
+  /* ---------- The four big numbers ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .tile { background: var(--paper); border-radius: 12px; padding: 14px 16px; border-top: 5px solid var(--accent-2); }
+  .tile .label { color: var(--muted); font-size: 0.9rem; }
+  .tile .value { font-size: 1.8rem; font-weight: 700; overflow-wrap: anywhere; }
+  .tile .sub { color: var(--muted); font-size: 0.9rem; }
+
+  /* ---------- Charts ---------- */
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .chart-box { position: relative; height: 300px; }
+
+  /* ---------- The table ---------- */
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { background: var(--soft); }
+  #status { font-weight: 600; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Spreadsheet Dashboard</h1>
+  <p class="privacy">Your file never leaves this computer. It is read right here in your browser.</p>
+
+  <!-- LOADING A FILE: click, keyboard, or drag onto the dashed box. -->
+  <section class="panel" aria-labelledby="load-title">
+    <h2 id="load-title">1. Load a spreadsheet</h2>
+    <div class="drop" id="drop">
+      <p>Drag a CSV or Excel file here, or</p>
+      <label class="file-label">
+        Choose a file
+        <input type="file" id="picker" accept=".csv,.xlsx,.xls,text/csv">
+      </label>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <!-- Everything below stays hidden until a file has loaded. -->
+  <div id="results" hidden>
+    <section class="panel" aria-labelledby="pick-title">
+      <h2 id="pick-title">2. Pick your columns</h2>
+      <div class="pickers">
+        <div>
+          <label for="label-col">Labels (names along the bottom)</label>
+          <select id="label-col"></select>
+        </div>
+        <div>
+          <label for="number-col">Numbers (what gets charted)</label>
+          <select id="number-col"></select>
+        </div>
+      </div>
+    </section>
+
+    <!-- The four big numbers. -->
+    <section aria-labelledby="tiles-title">
+      <h2 id="tiles-title" class="panel" style="margin-bottom:0">3. At a glance</h2>
+      <div class="tiles" style="margin-top:12px">
+        <div class="tile"><div class="label">Rows</div><div class="value" id="t-rows">-</div></div>
+        <div class="tile"><div class="label">Total</div><div class="value" id="t-total">-</div></div>
+        <div class="tile"><div class="label">Average</div><div class="value" id="t-avg">-</div></div>
+        <div class="tile"><div class="label">Highest</div><div class="value" id="t-max">-</div><div class="sub" id="t-max-label"></div></div>
+      </div>
+    </section>
+
+    <!-- The charts. role="img" + aria-label give each chart a name; the
+         table further down holds the same numbers for screen readers. -->
+    <section class="panel" aria-labelledby="charts-title">
+      <h2 id="charts-title">4. Charts</h2>
+      <div class="charts">
+        <div class="chart-box"><canvas id="bar" role="img" aria-label="Bar chart of the chosen column. The same numbers are in the table below."></canvas></div>
+        <div class="chart-box"><canvas id="line" role="img" aria-label="Line chart of the chosen column. The same numbers are in the table below."></canvas></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="table-title">
+      <h2 id="table-title">5. The data</h2>
+      <div class="table-wrap" tabindex="0" aria-label="Spreadsheet data, scrolls sideways if wide">
+        <table id="table"></table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+  // ==================================================================
+  // THE DATA
+  // After a file loads: "rows" is a list of objects, one per spreadsheet
+  // row, like { Month: "January", Tacos: 412 }. "columns" is the headers.
+  // ==================================================================
+  let rows = [];
+  let columns = [];
+  let barChart = null;    // Chart.js charts, kept so they can be redrawn
+  let lineChart = null;
+
+  const picker    = document.getElementById('picker');
+  const drop      = document.getElementById('drop');
+  const status    = document.getElementById('status');
+  const results   = document.getElementById('results');
+  const labelCol  = document.getElementById('label-col');
+  const numberCol = document.getElementById('number-col');
+
+  function say(message) { status.textContent = message; }
+
+  // ------------------------------------------------------------------
+  // TURNING A CELL INTO A NUMBER
+  // Spreadsheets are messy: "$1,200", " 45 ", or an empty cell. This
+  // strips dollar signs, commas and spaces, and returns null for
+  // anything that still is not a number, so it can be skipped.
+  // ------------------------------------------------------------------
+  function toNumber(value) {
+    if (typeof value === 'number') return value;
+    const cleaned = String(value).replace(/[$,\s]/g, '');
+    if (cleaned === '') return null;
+    const number = Number(cleaned);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  // Show a cell as text. Excel dates arrive as Date objects (cellDates
+  // below), so they are shown as normal dates instead of numbers like 45658.
+  function toText(value) {
+    if (value instanceof Date) return value.toLocaleDateString();
+    return String(value);
+  }
+
+  // Numbers shown in the tiles: commas for thousands, at most 2 decimals.
+  function pretty(number) {
+    return number.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+
+  // ------------------------------------------------------------------
+  // READING THE FILE
+  // SheetJS reads CSV and Excel the same way: hand it the file's bytes,
+  // take the first sheet, and turn it into a list of row objects.
+  // ------------------------------------------------------------------
+  async function loadFile(file) {
+    if (!file) return;
+    try {
+      const bytes = await file.arrayBuffer();     // read locally - nothing uploaded
+      const workbook = XLSX.read(bytes, { type: 'array', cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });   // defval: empty cells become ''
+
+      if (rows.length === 0) {
+        say(file.name + ' has no rows of data in its first sheet.');
+        return;
+      }
+      columns = Object.keys(rows[0]);
+      fillPickers();
+      results.hidden = false;
+      say('Loaded ' + file.name + ': ' + rows.length + ' rows, ' + columns.length + ' columns.');
+      draw();
+    } catch (error) {
+      console.error(error);
+      say('Could not read ' + file.name + '. Is it a CSV or Excel file?');
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // THE COLUMN DROPDOWNS
+  // Labels can be any column. Numbers only offers columns where most
+  // cells really are numbers. Sensible first picks: the first column
+  // for labels, and the first numeric column for numbers.
+  // ------------------------------------------------------------------
+  function fillPickers() {
+    const numeric = columns.filter(function (col) {
+      const good = rows.filter(function (row) { return toNumber(row[col]) !== null; }).length;
+      return good >= rows.length / 2;
+    });
+    labelCol.innerHTML = '';
+    numberCol.innerHTML = '';
+    columns.forEach(function (col) { labelCol.add(new Option(col, col)); });
+    (numeric.length ? numeric : columns).forEach(function (col) { numberCol.add(new Option(col, col)); });
+    labelCol.value = columns[0];
+    numberCol.value = numeric.find(function (col) { return col !== columns[0]; }) || numberCol.options[0].value;
+  }
+
+  // ------------------------------------------------------------------
+  // DRAWING EVERYTHING
+  // Runs after loading, and again every time a dropdown changes.
+  // ------------------------------------------------------------------
+  function draw() {
+    const labelKey = labelCol.value;
+    const numberKey = numberCol.value;
+
+    // Keep only rows whose chosen cell is a real number.
+    const usable = rows
+      .map(function (row) { return { label: toText(row[labelKey]), value: toNumber(row[numberKey]) }; })
+      .filter(function (point) { return point.value !== null; });
+
+    const labels = usable.map(function (p) { return p.label; });
+    const values = usable.map(function (p) { return p.value; });
+
+    // --- The four tiles ---
+    const total = values.reduce(function (sum, v) { return sum + v; }, 0);
+    document.getElementById('t-rows').textContent = pretty(rows.length);
+    document.getElementById('t-total').textContent = values.length ? pretty(total) : '-';
+    document.getElementById('t-avg').textContent = values.length ? pretty(total / values.length) : '-';
+    if (values.length) {
+      const top = usable.reduce(function (best, p) { return p.value > best.value ? p : best; });
+      document.getElementById('t-max').textContent = pretty(top.value);
+      document.getElementById('t-max-label').textContent = top.label;
+    } else {
+      document.getElementById('t-max').textContent = '-';
+      document.getElementById('t-max-label').textContent = 'No numbers in this column';
+    }
+
+    // --- The charts: throw away the old ones and draw fresh ---
+    if (barChart) barChart.destroy();
+    if (lineChart) lineChart.destroy();
+    const common = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, title: { display: true, text: numberKey + ' by ' + labelKey } }
+    };
+    barChart = new Chart(document.getElementById('bar'), {
+      type: 'bar',
+      data: { labels: labels, datasets: [{ label: numberKey, data: values, backgroundColor: '#2a9d8f' }] },
+      options: common
+    });
+    lineChart = new Chart(document.getElementById('line'), {
+      type: 'line',
+      data: { labels: labels, datasets: [{ label: numberKey, data: values, borderColor: '#264653', backgroundColor: '#264653', tension: 0.25 }] },
+      options: common
+    });
+
+    drawTable();
+  }
+
+  // ------------------------------------------------------------------
+  // THE TABLE: every row and column, as plain text.
+  // Built with textContent so nothing in a spreadsheet cell can ever
+  // run as code on this page.
+  // ------------------------------------------------------------------
+  function drawTable() {
+    const table = document.getElementById('table');
+    table.innerHTML = '';
+    const head = table.createTHead().insertRow();
+    columns.forEach(function (col) {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = col;
+      head.appendChild(th);
+    });
+    const body = table.createTBody();
+    rows.forEach(function (row) {
+      const tr = body.insertRow();
+      columns.forEach(function (col) { tr.insertCell().textContent = toText(row[col]); });
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // WIRING IT UP
+  // ------------------------------------------------------------------
+  picker.addEventListener('change', function () { loadFile(picker.files[0]); picker.value = ''; });
+  drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+  drop.addEventListener('drop', function (e) {
+    e.preventDefault();
+    drop.classList.remove('over');
+    loadFile(e.dataTransfer.files[0]);
+  });
+  labelCol.addEventListener('change', draw);
+  numberCol.addEventListener('change', draw);
+
+  // If either library failed to arrive, say which one, plainly.
+  if (typeof Chart === 'undefined' || typeof XLSX === 'undefined') {
+    say('A library did not load (' + (typeof Chart === 'undefined' ? 'Chart.js' : 'SheetJS') +
+        '). Check your internet connection and refresh.');
+    picker.disabled = true;
+  }
+</script>
+</body>
+</html>

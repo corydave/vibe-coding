@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<!--
+  Decision Maker 2
+  v2.0 - example build for Vibe Coding lab 4.5 (Apps worth sharing)
+
+  Everything the Decision Maker did, plus: the list rides in the link.
+  "Copy link to this list" gives you an address with your options in it,
+  like ?options=Pizza,Tacos,Sushi - open it anywhere and the list is back.
+  Add ?q=Dinner%20tonight and the page shows the question as well.
+
+  Privacy: nothing is sent anywhere, and nothing is stored on a server.
+  But the list is written INTO THE LINK, so anyone who has the link can
+  read it. Fine for dinner options. Never for anything private.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Decision Maker 2</title>
+  <style>
+    /* -------------------------------------------------------------
+       COLORS AND SIZES - change the look here, in one place
+       ------------------------------------------------------------- */
+    :root {
+      --page:    #fff8ef;   /* warm paper */
+      --card:    #ffffff;
+      --ink:     #2b2118;   /* main text */
+      --soft:    #6b5a4a;   /* secondary text (7:1 on --page) */
+      --accent:  #e4572e;   /* tomato red - the Decide button */
+      --accent2: #1f7a6d;   /* teal - the Add button */
+      --line:    #eadbc8;
+      --radius:  14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--page);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+      display: flex;
+      justify-content: center;
+      padding: 2rem 1rem 3rem;
+    }
+
+    main { width: min(100%, 520px); }
+
+    h1 { margin: 0 0 0.25rem; font-size: clamp(1.8rem, 6vw, 2.4rem); }
+    .hint { margin: 0 0 1.5rem; color: var(--soft); }
+
+    /* -------------------------------------------------------------
+       THE ADD FORM
+       ------------------------------------------------------------- */
+    form { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    label { width: 100%; font-weight: 600; }
+    input {
+      flex: 1 1 200px;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      border: 2px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      color: var(--ink);
+    }
+
+    button {
+      padding: 0.75rem 1.25rem;
+      font-size: 1rem;
+      font-weight: 700;
+      border: 0;
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: #fff;
+    }
+    .add    { background: var(--accent2); }
+    .decide { background: var(--accent); width: 100%; font-size: 1.25rem; padding: 1rem; }
+    .quiet  { background: transparent; color: var(--soft); text-decoration: underline; padding: 0.5rem; }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.5; cursor: wait; }
+
+    input:focus-visible, button:focus-visible {
+      outline: 3px solid var(--ink);
+      outline-offset: 3px;
+    }
+
+    /* A short message under the box: "Add at least two options", etc. */
+    .message { min-height: 1.5em; margin: 0.5rem 0 0; color: var(--soft); }
+
+    /* -------------------------------------------------------------
+       THE LIST OF OPTIONS
+       ------------------------------------------------------------- */
+    ul { list-style: none; margin: 1.25rem 0; padding: 0; display: grid; gap: 0.5rem; }
+    li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.6rem 0.6rem 0.6rem 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      word-break: break-word;
+    }
+    .remove {
+      background: transparent;
+      color: var(--soft);
+      padding: 0.4rem 0.7rem;
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+    .empty { color: var(--soft); font-style: italic; border-style: dashed; }
+
+    /* -------------------------------------------------------------
+       THE RESULT
+       ------------------------------------------------------------- */
+    .result {
+      margin-top: 1.25rem;
+      padding: 1.5rem 1rem;
+      min-height: 6rem;
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 2px solid var(--line);
+      text-align: center;
+      display: grid;
+      place-items: center;
+      font-size: clamp(1.6rem, 7vw, 2.4rem);
+      font-weight: 800;
+      word-break: break-word;
+    }
+    .result.winner { border-color: var(--accent); color: var(--accent); }
+
+    .list-heading { font-size: 1rem; margin: 1.25rem 0 0; }
+
+    /* The question from ?q=, shown under the title when there is one. */
+    .question { margin: 0 0 1.25rem; font-size: 1.2rem; font-weight: 700; color: var(--accent2); }
+    .question:empty { display: none; }
+
+    /* SHARING */
+    .share { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+    .share-btn { background: var(--ink); }
+    .share-note { color: var(--soft); font-size: 0.95rem; margin: 0.5rem 0 0; }
+    /* The fallback box, for browsers that will not copy for us. */
+    .link-box { width: 100%; margin-top: 0.5rem; font-size: 0.9rem; }
+    .link-box[hidden] { display: none; }
+
+    /* Hidden on screen, still read aloud by screen readers. */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Decision Maker</h1>
+    <p class="hint">Can't decide? Add your options, then let fate do the work.</p>
+    <!-- Filled in from ?q= in the address, if there is one. -->
+    <p class="question" id="question"></p>
+
+    <form id="add-form">
+      <label for="option">Add an option</label>
+      <input id="option" type="text" maxlength="60" autocomplete="off" placeholder="Tacos">
+      <button class="add" type="submit">Add</button>
+    </form>
+    <!-- Messages like "that one's already in the list" are announced aloud. -->
+    <p class="message" id="message" aria-live="polite"></p>
+
+    <h2 class="list-heading">Your options</h2>
+    <ul id="list"></ul>
+
+    <button class="decide" id="decide" type="button">Decide!</button>
+    <button class="quiet" id="clear" type="button">Clear all</button>
+
+    <!-- The winner, shown big. It flickers while the "wheel" spins, so it is
+         hidden from screen readers; the line below announces only the winner. -->
+    <div class="result" id="result" aria-hidden="true">?</div>
+    <p class="sr-only" id="announce" aria-live="polite"></p>
+
+    <section class="share" aria-labelledby="share-title">
+      <h2 id="share-title" class="list-heading">Share or save this list</h2>
+      <button class="share-btn" id="copy" type="button">Copy link to this list</button>
+      <p class="share-note" id="share-note" aria-live="polite">Bookmark the link to keep the list, or send it to someone. Anyone with the link can read it.</p>
+      <label class="sr-only" for="link-box">Link to this list</label>
+      <input class="link-box" id="link-box" type="text" readonly hidden>
+    </section>
+  </main>
+
+  <script>
+    // v1.0 - initial build
+
+    // =============================================================
+    // SETTINGS - safe to change
+    // =============================================================
+    const SETTINGS = {
+      maxOptions:  30,     // the most options the list will hold
+      spinTime:    2000,   // how long the "wheel" flicks through options, in milliseconds
+      minToDecide: 2,      // you need at least this many options to decide
+      maxLength:   60,     // the longest one option can be, in characters
+      maxQuestion: 80      // the longest the ?q= question can be
+    };
+
+    // The options live here, in a plain list, while the page is open.
+    // Nothing is saved: refresh the page and this starts empty again.
+    let options = [];
+
+    // The parts of the page the script needs.
+    const form    = document.getElementById("add-form");
+    const input   = document.getElementById("option");
+    const list    = document.getElementById("list");
+    const message = document.getElementById("message");
+    const result  = document.getElementById("result");
+    const decide  = document.getElementById("decide");
+    const clear   = document.getElementById("clear");
+    const announce = document.getElementById("announce");
+    const questionEl = document.getElementById("question");
+    const copyBtn    = document.getElementById("copy");
+    const shareNote  = document.getElementById("share-note");
+    const linkBox    = document.getElementById("link-box");
+
+    // =============================================================
+    // THE LIST IN THE LINK
+    // A link like  ...?q=Dinner%20tonight&options=Pizza,Tacos,Sushi
+    // carries a question and a list. The functions below read it when
+    // the page opens, and write it whenever the list changes.
+    // =============================================================
+
+    // Read one piece of the address EXACTLY as written - still coded, with
+    // %2C for any comma inside an option. We need it raw so we can split the
+    // options on the real commas first, and only then decode each one.
+    function readRawParam(name) {
+      const pairs = window.location.search.replace(/^\?/, "").split("&");
+      for (const pair of pairs) {
+        const eq = pair.indexOf("=");
+        if (eq === -1) continue;
+        if (pair.slice(0, eq) === name) return pair.slice(eq + 1);
+      }
+      return "";
+    }
+
+    // Turn one coded piece back into ordinary text. %20 and + become spaces,
+    // %2C becomes a comma. A badly-typed link must not crash the app, so a
+    // piece that cannot be decoded is simply skipped.
+    function decodePiece(piece) {
+      try {
+        return decodeURIComponent(piece.replace(/\+/g, " "));
+      } catch (error) {
+        return "";
+      }
+    }
+
+    // The options from the link, cleaned up. Anyone can type anything into
+    // an address, so nothing from it is trusted: blanks and repeats are
+    // dropped, and every option is cut to a sensible length.
+    function optionsFromLink() {
+      const raw = readRawParam("options");
+      if (!raw) return [];
+      const found = [];
+      raw.split(",").forEach(function (piece) {
+        const text = decodePiece(piece).trim().slice(0, SETTINGS.maxLength);
+        const repeat = found.some(function (o) { return o.toLowerCase() === text.toLowerCase(); });
+        if (text && !repeat && found.length < SETTINGS.maxOptions) found.push(text);
+      });
+      return found;
+    }
+
+    // The question from ?q=, cut to length. Shown with textContent, so a
+    // question like <b>hi</b> appears as those exact characters - never as code.
+    function questionFromLink() {
+      return decodePiece(readRawParam("q")).trim().slice(0, SETTINGS.maxQuestion);
+    }
+
+    // Build the link to this page with the current list in it. Each option is
+    // coded separately, which turns a comma INSIDE an option into %2C - so
+    // "Mac, and cheese" stays one option instead of splitting in two.
+    function linkToThisList() {
+      const page = window.location.href.split("#")[0].split("?")[0];
+      const parts = [];
+      const question = questionFromLink();
+      if (question) parts.push("q=" + encodeURIComponent(question));
+      if (options.length) parts.push("options=" + options.map(encodeURIComponent).join(","));
+      return parts.length ? page + "?" + parts.join("&") : page;
+    }
+
+    // Keep the address bar up to date as the list changes, so a plain
+    // bookmark saves the list too. Some browsers refuse this for a page
+    // opened straight from a folder on your computer; if so, we skip it
+    // quietly - Copy link still works.
+    function updateAddress() {
+      try {
+        history.replaceState(null, "", linkToThisList());
+      } catch (error) {
+        /* not allowed here - the Copy link button covers it */
+      }
+    }
+
+    // Is the device asking for less motion? If so, skip the spinning.
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // -------------------------------------------------------------
+    // DRAW THE LIST
+    // Rebuilds the list on the page from the options array. Every
+    // option is added with textContent, so whatever someone types is
+    // always shown as plain text and can never become code on the page.
+    // -------------------------------------------------------------
+    function drawList() {
+      list.textContent = "";                 // clear what was there
+      updateAddress();                       // the link always matches the list
+
+      // The empty state: say something friendly instead of showing nothing.
+      if (options.length === 0) {
+        const li = document.createElement("li");
+        li.className = "empty";
+        li.textContent = "No options yet. Add a few above.";
+        list.appendChild(li);
+        return;
+      }
+
+      options.forEach(function (text, position) {
+        const li = document.createElement("li");
+
+        const label = document.createElement("span");
+        label.textContent = text;
+
+        // Each remove button says WHICH option it removes, so a screen
+        // reader user hears "Remove Tacos", not just "Remove" ten times.
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "remove";
+        remove.textContent = "✕";
+        remove.setAttribute("aria-label", "Remove " + text);
+        remove.addEventListener("click", function () {
+          options.splice(position, 1);       // take this one out of the list
+          drawList();
+          say("Removed " + text + ".");
+          input.focus();
+        });
+
+        li.appendChild(label);
+        li.appendChild(remove);
+        list.appendChild(li);
+      });
+    }
+
+    // Show (and announce) a short message under the box.
+    function say(text) { message.textContent = text; }
+
+    // -------------------------------------------------------------
+    // ADD AN OPTION - the Add button, or Enter in the box
+    // -------------------------------------------------------------
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();                // stop the page from reloading
+
+      const text = input.value.trim();       // ignore spaces at either end
+
+      // The edge cases: blank, a repeat, or a full list.
+      if (text === "") {
+        say("Type something first.");
+        return;
+      }
+      const already = options.some(function (o) { return o.toLowerCase() === text.toLowerCase(); });
+      if (already) {
+        say("\"" + text + "\" is already in the list.");
+        return;
+      }
+      if (options.length >= SETTINGS.maxOptions) {
+        say("That's plenty of options. Time to decide!");
+        return;
+      }
+
+      options.push(text);
+      drawList();
+      say("");
+      input.value = "";
+      input.focus();                         // ready for the next one
+    });
+
+    // -------------------------------------------------------------
+    // DECIDE - flick through the options, slowing down, then stop
+    // -------------------------------------------------------------
+    decide.addEventListener("click", function () {
+      // The polite refusal: you cannot pick from one thing, or none.
+      if (options.length < SETTINGS.minToDecide) {
+        result.classList.remove("winner");
+        result.textContent = "Add at least two options first.";
+        announce.textContent = "Add at least two options first.";
+        return;
+      }
+
+      const winner = options[Math.floor(Math.random() * options.length)];
+
+      if (reduceMotion) {                    // no spinning - just the answer
+        showWinner(winner);
+        return;
+      }
+
+      // The "wheel": show random options, each one a little slower than
+      // the last, until the spin time runs out, then land on the winner.
+      decide.disabled = true;
+      result.classList.remove("winner");
+      let delay = 60;
+      let elapsed = 0;
+
+      function tick() {
+        result.textContent = options[Math.floor(Math.random() * options.length)];
+        elapsed += delay;
+        delay = delay * 1.15;                // slow down, like a wheel
+        if (elapsed < SETTINGS.spinTime) {
+          setTimeout(tick, delay);
+        } else {
+          showWinner(winner);
+        }
+      }
+      tick();
+    });
+
+    function showWinner(winner) {
+      result.textContent = winner;
+      result.classList.add("winner");
+      announce.textContent = "The winner is " + winner + ".";
+      decide.disabled = false;
+    }
+
+    // -------------------------------------------------------------
+    // CLEAR ALL
+    // -------------------------------------------------------------
+    clear.addEventListener("click", function () {
+      options = [];
+      drawList();
+      result.classList.remove("winner");
+      result.textContent = "?";
+      say("List cleared.");
+      input.focus();
+    });
+
+    // -------------------------------------------------------------
+    // COPY LINK
+    // -------------------------------------------------------------
+    copyBtn.addEventListener("click", function () {
+      const link = linkToThisList();
+      // The modern way to copy. It needs permission, which browsers give
+      // freely on a web page you clicked but may refuse on a local file.
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(link).then(function () {
+          shareNote.textContent = "Copied! Paste it anywhere. Anyone with the link can read the list.";
+          linkBox.hidden = true;
+        }, showLinkBox);
+      } else {
+        showLinkBox();
+      }
+
+      // The fallback: show the link in a box, selected, ready to copy by hand.
+      function showLinkBox() {
+        linkBox.value = link;
+        linkBox.hidden = false;
+        linkBox.focus();
+        linkBox.select();
+        shareNote.textContent = "Your browser would not copy it for us, so here it is - copy it from the box.";
+      }
+    });
+
+    // -------------------------------------------------------------
+    // START UP - take the question and the list from the link, if any
+    // -------------------------------------------------------------
+    questionEl.textContent = questionFromLink() ? "Deciding: " + questionFromLink() : "";
+    options = optionsFromLink();
+    drawList();
+  </script>
+</body>
+</html>

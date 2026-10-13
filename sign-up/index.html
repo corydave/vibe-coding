@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study Group Sign-Up</title>
+<!--
+  v1.0 - initial build: a sign-up form for a study group. Every control has a
+         real <label>, required fields say so in words, errors are shown in
+         text, announced, and focus moves to the first one. A valid form
+         becomes a link that holds the answers; opening that link fills the
+         form back in. Nothing is sent to any server - the answers live only
+         in the link.
+-->
+<style>
+  :root {
+    --ink: #1d2433; --muted: #5b6475; --paper: #f4f6f9; --card: #fff;
+    --line: #c7ced9; --accent: #1f5f8b; --error: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink); background: var(--paper); line-height: 1.5;
+  }
+  main { max-width: 640px; margin: 0 auto; background: var(--card); padding: 24px; border-radius: 14px; }
+  h1 { margin-top: 0; }
+  .lede { color: var(--muted); margin-top: -8px; }
+
+  /* ---------- Fields ---------- */
+  .field { margin: 18px 0; }
+  label, legend { display: block; font-weight: 600; margin-bottom: 4px; }
+  fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px 12px; margin: 18px 0; }
+  fieldset label { display: flex; gap: 8px; align-items: center; font-weight: 400; margin: 6px 0; }
+  input[type="text"], input[type="email"], input[type="date"], select, textarea {
+    width: 100%; font: inherit; padding: 9px 10px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  input[type="radio"], input[type="checkbox"] { width: 1.2em; height: 1.2em; }
+  /* Required is said in WORDS, not only with a color or a star. */
+  .req { font-weight: 400; color: var(--muted); }
+  .hint { font-size: 0.9rem; color: var(--muted); margin: 2px 0 0; }
+
+  /* ---------- Errors: in words, with a red border as an extra signal ---------- */
+  [aria-invalid="true"] { border-color: var(--error) !important; border-width: 2px !important; }
+  .error { color: var(--error); font-weight: 600; margin: 4px 0 0; }
+  .error:empty { display: none; }
+  #summary { border: 2px solid var(--error); border-radius: 10px; padding: 10px 14px; color: var(--error); }
+  #summary[hidden] { display: none; }
+
+  /* ---------- Buttons and focus ---------- */
+  button {
+    font: inherit; font-weight: 700; padding: 10px 20px;
+    border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer;
+  }
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+  /* ---------- The finished link ---------- */
+  #result { margin-top: 24px; padding: 14px; border-radius: 10px; background: #eaf4ea; }
+  #result[hidden] { display: none; }
+  #result input { width: 100%; font: inherit; padding: 8px; margin: 6px 0 10px; border: 1px solid var(--line); border-radius: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Study Group Sign-Up</h1>
+  <p class="lede">Fields marked (required) need an answer. Everything else is up to you.</p>
+
+  <!-- The error summary. role="alert" makes screen readers read it the
+       moment it appears. -->
+  <div id="summary" role="alert" hidden tabindex="-1"></div>
+
+  <form id="form" novalidate>
+    <div class="field">
+      <label for="name">Your name <span class="req">(required)</span></label>
+      <input type="text" id="name" name="name" autocomplete="name" aria-describedby="name-error">
+      <p class="error" id="name-error"></p>
+    </div>
+
+    <div class="field">
+      <label for="email">Email address <span class="req">(required)</span></label>
+      <input type="email" id="email" name="email" autocomplete="email" aria-describedby="email-hint email-error">
+      <p class="hint" id="email-hint">For example: you@example.com</p>
+      <p class="error" id="email-error"></p>
+    </div>
+
+    <div class="field">
+      <label for="date">First date you can come</label>
+      <input type="date" id="date" name="date">
+    </div>
+
+    <!-- A group of radio buttons gets ONE name, from <fieldset> and <legend>. -->
+    <fieldset id="session-group" aria-describedby="session-error">
+      <legend>Which session? <span class="req">(required)</span></legend>
+      <label><input type="radio" name="session" value="morning"> Morning, 9 to 10</label>
+      <label><input type="radio" name="session" value="lunch"> Lunch, 12 to 1</label>
+      <label><input type="radio" name="session" value="evening"> Evening, 6 to 7</label>
+      <p class="error" id="session-error"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>What can you bring?</legend>
+      <label><input type="checkbox" name="bring" value="snacks"> Snacks</label>
+      <label><input type="checkbox" name="bring" value="notes"> Class notes</label>
+      <label><input type="checkbox" name="bring" value="laptop"> A laptop to share</label>
+    </fieldset>
+
+    <div class="field">
+      <label for="topic">Topic you most want help with</label>
+      <select id="topic" name="topic">
+        <option value="">Choose one</option>
+        <option value="prompting">Writing prompts</option>
+        <option value="github">GitHub and publishing</option>
+        <option value="access">Accessibility</option>
+        <option value="libraries">Libraries</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="notes">Anything else?</label>
+      <textarea id="notes" name="notes"></textarea>
+    </div>
+
+    <button type="submit">Sign me up</button>
+  </form>
+
+  <section id="result" hidden aria-labelledby="result-title">
+    <h2 id="result-title" tabindex="-1">You're signed up!</h2>
+    <p>This link holds your answers. Send it to the organizer, or keep it - opening it fills this form back in.</p>
+    <label for="link">Your sign-up link</label>
+    <input type="text" id="link" readonly>
+    <button type="button" id="copy">Copy link</button>
+    <p id="copied" aria-live="polite"></p>
+  </section>
+</main>
+
+<script>
+  const form = document.getElementById('form');
+  const summary = document.getElementById('summary');
+  const result = document.getElementById('result');
+  const linkBox = document.getElementById('link');
+
+  // Find a field by its id. (Careful: "form.name" would NOT find the name
+  // box - it means the form's own name - so every field is looked up by id.)
+  function field(id) { return document.getElementById(id); }
+
+  // ------------------------------------------------------------------
+  // CHECKING THE FORM. Each check returns an error message, or '' if fine.
+  // ------------------------------------------------------------------
+  const CHECKS = [
+    { id: 'name', test: function () {
+        return field('name').value.trim() ? '' : 'Enter your name.'; } },
+    { id: 'email', test: function () {
+        const v = field('email').value.trim();
+        if (!v) return 'Enter your email address.';
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? '' : 'That email address is missing something - it should look like you@example.com.'; } },
+    { id: 'session', test: function () {
+        return form.querySelector('input[name="session"]:checked') ? '' : 'Choose a session.'; } }
+  ];
+
+  function showErrors() {
+    const problems = [];
+    CHECKS.forEach(function (check) {
+      const message = check.test();
+      document.getElementById(check.id + '-error').textContent = message;
+      // Mark the control itself as invalid, so a screen reader says so too.
+      const target = check.id === 'session' ? document.getElementById('session-group') : document.getElementById(check.id);
+      if (message) { target.setAttribute('aria-invalid', 'true'); problems.push({ id: check.id, message: message }); }
+      else target.removeAttribute('aria-invalid');
+    });
+    return problems;
+  }
+
+  // ------------------------------------------------------------------
+  // SUBMIT: show errors in words and move focus to the first one, or
+  // build the link.
+  // ------------------------------------------------------------------
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const problems = showErrors();
+
+    if (problems.length) {
+      summary.textContent = '';
+      const intro = document.createElement('p');
+      intro.textContent = 'Please fix ' + (problems.length === 1 ? 'this' : 'these ' + problems.length + ' things') + ':';
+      const list = document.createElement('ul');
+      problems.forEach(function (p) {
+        const li = document.createElement('li');
+        li.textContent = p.message;
+        list.appendChild(li);
+      });
+      summary.append(intro, list);
+      summary.hidden = false;
+      result.hidden = true;
+      // Focus goes to the first problem, so a keyboard user lands right on it.
+      const first = problems[0].id === 'session'
+        ? form.querySelector('input[name="session"]')
+        : document.getElementById(problems[0].id);
+      first.focus();
+      return;
+    }
+
+    summary.hidden = true;
+    linkBox.value = buildLink();
+    result.hidden = false;
+    document.getElementById('result-title').focus();
+  });
+
+  // ------------------------------------------------------------------
+  // THE LINK. Every answer goes into the address after the ?, the same
+  // trick as the Invite From a Link app. URLSearchParams handles spaces
+  // and special characters safely.
+  // ------------------------------------------------------------------
+  function buildLink() {
+    const params = new URLSearchParams();
+    ['name', 'email', 'date', 'topic', 'notes'].forEach(function (key) {
+      const v = field(key).value.trim();
+      if (v) params.set(key, v);
+    });
+    const session = form.querySelector('input[name="session"]:checked');
+    if (session) params.set('session', session.value);
+    form.querySelectorAll('input[name="bring"]:checked').forEach(function (box) { params.append('bring', box.value); });
+    // The page's own address, minus any old answers, plus the new ones.
+    return location.href.split('?')[0].split('#')[0] + '?' + params.toString();
+  }
+
+  // Opened from a link? Fill the form back in. Values only ever go into
+  // .value and .checked, never into the page as code.
+  function fillFromLink() {
+    const params = new URLSearchParams(location.search);
+    if (!params.toString()) return;
+    ['name', 'email', 'date', 'notes'].forEach(function (key) {
+      if (params.has(key)) field(key).value = params.get(key);
+    });
+    if (params.has('topic')) {
+      const option = Array.from(field('topic').options).find(function (o) { return o.value === params.get('topic'); });
+      if (option) field('topic').value = option.value;
+    }
+    form.querySelectorAll('input[name="session"]').forEach(function (r) { r.checked = r.value === params.get('session'); });
+    const bring = params.getAll('bring');
+    form.querySelectorAll('input[name="bring"]').forEach(function (box) { box.checked = bring.includes(box.value); });
+  }
+
+  // Copy the link, and say that it worked.
+  document.getElementById('copy').addEventListener('click', async function () {
+    const status = document.getElementById('copied');
+    try {
+      await navigator.clipboard.writeText(linkBox.value);
+      status.textContent = 'Copied.';
+    } catch (error) {
+      linkBox.select();
+      status.textContent = 'Could not copy automatically - the link is selected, so press Ctrl+C (or Cmd+C).';
+    }
+  });
+
+  fillFromLink();
+</script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Countdown</title>
+  <style>
+    :root {
+      --primary-color: #00897b;
+      --page-bg: #062925;
+      --text: #e8f5f3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--page-bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    h1 { font-size: clamp(1.4rem, 5vw, 2.2rem); margin: 0 0 2rem; font-weight: 600; }
+
+    /* flex-wrap lets the four boxes drop onto two lines on a narrow phone
+       instead of squashing. */
+    .clock { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+
+    .unit {
+      background: rgba(255,255,255,0.06);
+      border-radius: 14px;
+      padding: 1rem 1.2rem;
+      min-width: 5.5rem;
+    }
+    .number {
+      display: block;
+      font-size: clamp(2.2rem, 9vw, 4rem);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--primary-color);
+      line-height: 1;
+    }
+    .label {
+      display: block;
+      margin-top: 0.4rem;
+      font-size: 0.8rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #9fc7c2;
+    }
+    #finished { font-size: 1.5rem; margin-top: 2rem; }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1 id="heading">Counting down to something</h1>
+
+    <!-- aria-live="polite" on the whole clock, and the numbers are announced
+         together rather than four separate interruptions every second. -->
+    <div class="clock" aria-live="polite">
+      <div class="unit"><span class="number" id="days">--</span><span class="label">Days</span></div>
+      <div class="unit"><span class="number" id="hours">--</span><span class="label">Hours</span></div>
+      <div class="unit"><span class="number" id="minutes">--</span><span class="label">Minutes</span></div>
+      <div class="unit"><span class="number" id="seconds">--</span><span class="label">Seconds</span></div>
+    </div>
+
+    <p id="finished" hidden>It's here.</p>
+  </main>
+
+  <script>
+    // ==========================================================
+    // Countdown
+    // v1.0 - initial build
+    // ==========================================================
+
+    const daysBox    = document.getElementById("days");
+    const hoursBox   = document.getElementById("hours");
+    const minutesBox = document.getElementById("minutes");
+    const secondsBox = document.getElementById("seconds");
+    const heading    = document.getElementById("heading");
+    const finished   = document.getElementById("finished");
+
+    heading.textContent = "Counting down to the end of the semester";
+
+    // new Date(...) turns that piece of text into a date the computer can do
+    // arithmetic with.
+    const target = new Date("2026-12-18T17:00:00");
+
+    function update() {
+      const now = new Date();
+
+      // Subtracting two dates gives the gap in milliseconds - thousandths of
+      // a second. Everything below is just converting that into useful units.
+      let gap = target - now;
+
+      if (gap <= 0) {
+        // The moment has passed. Stop counting and say so.
+        clearInterval(ticker);
+        daysBox.textContent = "0";
+        hoursBox.textContent = "0";
+        minutesBox.textContent = "0";
+        secondsBox.textContent = "0";
+        finished.hidden = false;
+        return;
+      }
+
+      const oneSecond = 1000;
+      const oneMinute = oneSecond * 60;
+      const oneHour   = oneMinute * 60;
+      const oneDay    = oneHour * 24;
+
+      // Math.floor chops off the decimal - 3.97 days is 3 whole days.
+      const days    = Math.floor(gap / oneDay);
+      const hours   = Math.floor((gap % oneDay) / oneHour);
+      const minutes = Math.floor((gap % oneHour) / oneMinute);
+      const seconds = Math.floor((gap % oneMinute) / oneSecond);
+
+      daysBox.textContent    = days;
+      hoursBox.textContent   = String(hours).padStart(2, "0");
+      minutesBox.textContent = String(minutes).padStart(2, "0");
+      secondsBox.textContent = String(seconds).padStart(2, "0");
+    }
+
+    // Run it once straight away, so the page is never showing "--",
+    // then once every second after that.
+    update();
+    const ticker = setInterval(update, 1000);
+  </script>
+</body>
+</html>

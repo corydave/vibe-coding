@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Peanut Butter Oatmeal Cookies</title>
+  <style>
+    :root {
+      --primary-color: #8d5524;
+      --page-bg: #fdf8f3;
+      --card-bg: #ffffff;
+      --text: #2b2118;
+      --border: #e5d9cc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      background: var(--page-bg);
+      color: var(--text);
+      line-height: 1.7;
+      margin: 0;
+      padding: 2rem 1rem 4rem;
+    }
+    .card {
+      max-width: 42rem;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem;
+    }
+    h1 { color: var(--primary-color); margin-top: 0; font-size: clamp(1.6rem, 5vw, 2.3rem); }
+    h2 { color: var(--primary-color); font-size: 1.25rem; margin-top: 2rem; }
+
+    /* A picture that never overflows its container, whatever size the file is.
+       height:auto keeps it from being squashed. */
+    img { width: 100%; height: auto; border-radius: 10px; display: block; }
+
+    ul, ol { padding-left: 1.3rem; }
+    li { margin-bottom: 0.4rem; }
+
+    .meta { color: #7a6a58; font-style: italic; margin-top: -0.5rem; }
+
+    a { color: var(--primary-color); }
+    a:focus-visible { outline: 3px solid #ff9800; outline-offset: 2px; }
+
+    .nav { margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--border); }
+  </style>
+</head>
+
+<body>
+  <!-- <main> is a landmark. A screen reader user can jump straight here and
+       skip everything else on the page. -->
+  <main class="card">
+    <h1>Peanut Butter Oatmeal Cookies</h1>
+    <p class="meta">Makes about 18. Twenty minutes, start to finish.</p>
+
+    <!-- The alt text describes the picture for someone who cannot see it.
+         It is a sentence about what is in the photo, not the file name. -->
+    <img src="photo.jpg" alt="A tray of golden peanut butter oatmeal cookies, still on the baking sheet.">
+
+    <h2>Ingredients</h2>
+    <ul>
+      <li>1 cup peanut butter</li>
+      <li>1 cup packed brown sugar</li>
+      <li>1 large egg</li>
+      <li>1 teaspoon vanilla</li>
+      <li>1 cup rolled oats</li>
+      <li>1/2 teaspoon baking soda</li>
+      <li>A pinch of salt</li>
+    </ul>
+
+    <h2>Steps</h2>
+    <ol>
+      <li>Heat the oven to 350&deg;F.</li>
+      <li>Stir the peanut butter, sugar, egg and vanilla together until smooth.</li>
+      <li>Fold in the oats, baking soda and salt.</li>
+      <li>Roll into walnut-sized balls and flatten slightly on a lined tray.</li>
+      <li>Bake 10 to 12 minutes. They will look underdone. Take them out anyway.</li>
+      <li>Let them sit on the tray for five minutes before moving them.</li>
+    </ol>
+
+    <nav class="nav">
+      <!-- A link to a file sitting right beside this one. No folder names,
+           no slashes - just the file name, because they share an address. -->
+      <p><a href="notes.html">Notes and things that went wrong &rarr;</a></p>
+    </nav>
+  </main>
+</body>
+</html>

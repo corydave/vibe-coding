@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dave Ghidiu</title>
+  <style>
+    :root {
+      --primary-color: #1f6f8b;
+      --page-bg: #f6f9fb;
+      --card-bg: #ffffff;
+      --text: #14202b;
+      --muted: #5c6b78;
+      --border: #dbe6ed;
+    }
+
+    /* If the visitor's computer is set to dark mode, honour it. This is the
+       page doing what it was asked rather than what we assumed. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page-bg: #0f171e;
+        --card-bg: #172330;
+        --text: #e8f0f6;
+        --muted: #9db0bf;
+        --border: #24384a;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--page-bg);
+      color: var(--text);
+      line-height: 1.7;
+      margin: 0;
+      padding: 2rem 1rem 4rem;
+    }
+    .wrap { max-width: 44rem; margin: 0 auto; }
+
+    header { text-align: center; margin-bottom: 2.5rem; }
+
+    /* The portrait. A fixed square with object-fit: cover means any photo
+       looks right here, whatever shape it started as. */
+    .portrait {
+      width: 11rem;
+      height: 11rem;
+      object-fit: cover;
+      border-radius: 50%;
+      border: 4px solid var(--card-bg);
+      display: block;
+      margin: 0 auto 1.2rem;
+      background: #dde7ee;
+    }
+
+    h1 { font-size: clamp(1.8rem, 6vw, 2.6rem); margin: 0 0 0.3rem; }
+    .tagline { color: var(--muted); font-size: 1.1rem; margin: 0; }
+
+    section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.4rem 1.6rem;
+      margin-bottom: 1.2rem;
+    }
+    h2 { color: var(--primary-color); font-size: 1.2rem; margin-top: 0; }
+
+    .side-by-side { display: flex; gap: 1.4rem; align-items: center; flex-wrap: wrap; }
+    .side-by-side img {
+      width: 12rem;
+      height: 9rem;
+      object-fit: cover;
+      border-radius: 10px;
+      background: #dde7ee;
+    }
+    .side-by-side p { flex: 1 1 14rem; margin: 0; }
+
+    ul.links { list-style: none; padding: 0; margin: 0; }
+    ul.links li { margin-bottom: 0.5rem; }
+    a { color: var(--primary-color); }
+    a:focus-visible { outline: 3px solid #ff9800; outline-offset: 2px; }
+
+    footer { text-align: center; color: var(--muted); font-size: 0.9rem; margin-top: 2rem; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <!-- <header>, <main>, <section> and <footer> are landmarks. They tell
+         assistive technology what each part of the page is for, which is far
+         more useful than a pile of anonymous <div> tags. -->
+    <header>
+      <img class="portrait" src="me.jpg" alt="REPLACE ME - a short description of your portrait photo.">
+      <h1>Dave Ghidiu</h1>
+      <p class="tagline">Teacher, tinkerer, apologetic optimist about AI.</p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Who I am</h2>
+        <p>
+          I teach computing at Finger Lakes Community College and spend most of
+          my time working out how to lower the barrier between people and the
+          things they want to build. Before that I taught high school, and
+          before that I was the person everyone's family calls about printers.
+        </p>
+      </section>
+
+      <section>
+        <h2>What I am up to</h2>
+        <div class="side-by-side">
+          <img src="dog.jpg" alt="REPLACE ME - a short description of the second photo.">
+          <p>
+            Running, mostly slowly. Building small browser tools that do one
+            thing. Making peanut butter. Recording a podcast about technology
+            that is arriving faster than any of us planned for.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Where else to find me</h2>
+        <ul class="links">
+          <li><a href="https://www.daveghidiu.com">daveghidiu.com</a></li>
+          <li><a href="https://github.com/corydave">github.com/corydave</a></li>
+          <li><a href="https://flcc.ai">The FLX AI Hub</a></li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <p>Built by describing it to an AI, then fixing what it got wrong.</p>
+    </footer>
+
+  </div>
+</body>
+</html>

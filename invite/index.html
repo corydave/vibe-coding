@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<!--
+  Invite From a Link
+  v1.0 - example build for Vibe Coding lab 4.4 (Apps worth sharing)
+
+  One invitation page, a hundred different invites. The page reads who it
+  is for from its own address:
+
+      .../invite/?to=Sam                        "Sam, you're invited!"
+      .../invite/?to=Sam&event=Pizza%20Night    ...and a different event
+
+  With no name in the address it still makes sense: "You're invited!"
+  At the bottom, a small builder writes the links for you.
+
+  Privacy and safety: nothing is sent anywhere or saved. Anything in the
+  address is treated as plain text, never as code - so ?to=<b>Sam</b>
+  shows those exact characters instead of making Sam bold.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>You're invited!</title>
+  <style>
+    /* -------------------------------------------------------------
+       COLORS - cozy game night
+       ------------------------------------------------------------- */
+    :root {
+      --page:   #2d1e2f;   /* plum */
+      --card:   #fff4e0;   /* warm cream */
+      --ink:    #2d1e2f;
+      --soft:   #6d5260;   /* 6.9:1 on --card */
+      --accent: #c8553d;   /* terracotta */
+      --gold:   #f2a541;
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+      padding: 2rem 1rem 3rem;
+      background: radial-gradient(circle at 50% 0%, #4a2f4d, var(--page) 65%);
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+    }
+
+    /* -------------------------------------------------------------
+       THE INVITATION CARD
+       ------------------------------------------------------------- */
+    .invite {
+      width: min(100%, 520px);
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: clamp(1.5rem, 6vw, 2.75rem);
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+      border: 6px double var(--gold);
+    }
+    .dice { font-size: 2.5rem; margin: 0; }
+    .greeting {
+      margin: 0.5rem 0;
+      font-size: clamp(1.9rem, 8vw, 2.8rem);
+      line-height: 1.15;
+      color: var(--accent);
+      word-break: break-word;
+    }
+    .event { margin: 0.25rem 0 1.25rem; font-size: 1.35rem; font-style: italic; word-break: break-word; }
+
+    dl { margin: 0 auto; display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 1rem; text-align: left; max-width: 22rem; }
+    dt { font-weight: 700; color: var(--soft); font-family: system-ui, sans-serif; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.2rem; }
+    dd { margin: 0; font-size: 1.15rem; }
+    .note { margin: 1.25rem 0 0; color: var(--soft); }
+
+    /* -------------------------------------------------------------
+       THE LINK BUILDER (for the host)
+       ------------------------------------------------------------- */
+    .builder {
+      width: min(100%, 520px);
+      color: #f3e6ee;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .builder h2 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+    .builder p { margin: 0 0 0.75rem; color: #d9c4d2; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .builder input {
+      flex: 1 1 180px;
+      padding: 0.7rem 0.9rem;
+      border-radius: 10px;
+      border: 2px solid #6b4a6e;
+      background: #1f1420;
+      color: #fff;
+      font-size: 1rem;
+    }
+    .builder button {
+      padding: 0.7rem 1.2rem;
+      border: 0;
+      border-radius: 10px;
+      background: var(--gold);
+      color: #2d1e2f;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    .output { margin-top: 0.75rem; }
+    .output[hidden] { display: none; }
+    .status { min-height: 1.4em; margin: 0.5rem 0 0; }
+
+    input:focus-visible, button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <main class="invite">
+    <p class="dice" aria-hidden="true">🎲 🃏 ♟️</p>
+    <!-- Filled in from the address by the script. -->
+    <h1 class="greeting" id="greeting">You're invited!</h1>
+    <p class="event" id="event"></p>
+    <dl>
+      <dt>When</dt>  <dd id="when"></dd>
+      <dt>Where</dt> <dd id="where"></dd>
+      <dt>Bring</dt> <dd id="bring"></dd>
+    </dl>
+    <p class="note" id="host"></p>
+  </main>
+
+  <section class="builder" aria-labelledby="builder-title">
+    <h2 id="builder-title">Sending invites? Make a link</h2>
+    <p>Type a name and get that person's own invite link.</p>
+    <form id="builder" class="row">
+      <label class="sr-only" for="guest">Guest's name</label>
+      <input id="guest" type="text" maxlength="40" autocomplete="off" placeholder="Their name">
+      <button type="submit">Make link</button>
+    </form>
+    <div class="output" id="output" hidden>
+      <div class="row">
+        <label class="sr-only" for="link">Invite link</label>
+        <input id="link" type="text" readonly>
+        <button id="copy" type="button">Copy</button>
+      </div>
+    </div>
+    <p class="status" id="status" aria-live="polite"></p>
+  </section>
+
+  <script>
+    // v1.0 - initial build
+
+    // =============================================================
+    // THE EVENT - edit these for your own party. The name of the
+    // guest is NOT here: that comes from the link.
+    // =============================================================
+    const EVENT = {
+      name:  "Game Night",
+      when:  "Friday, October 23 at 7:00 pm",
+      where: "The back room at the Student Center",
+      bring: "A snack, and your worst poker face",
+      host:  "Hosted by Dave. Loser does the dishes."
+    };
+
+    // The longest name or event a link is allowed to put on the page.
+    // Anyone can type anything into an address, so we never take it on trust.
+    const MAX_LENGTH = 40;
+
+    // -------------------------------------------------------------
+    // READ THE ADDRESS
+    // URLSearchParams understands the part of the address after the ?.
+    // It also turns %20 (and +) back into spaces for us.
+    // -------------------------------------------------------------
+    const params = new URLSearchParams(window.location.search);
+
+    // Get one value from the link, tidied up: spaces trimmed, cut to length.
+    // Returns "" (nothing) if it is missing.
+    function fromLink(name) {
+      return (params.get(name) || "").trim().slice(0, MAX_LENGTH);
+    }
+
+    const guest = fromLink("to");
+    const eventName = fromLink("event") || EVENT.name;
+
+    // -------------------------------------------------------------
+    // FILL IN THE INVITE
+    // Everything goes in with textContent, so whatever was in the link is
+    // shown as plain text. That is the difference between a page that
+    // shows <b>Sam</b> and a page that obeys it.
+    // -------------------------------------------------------------
+    const greeting = guest ? guest + ", you're invited!" : "You're invited!";
+    document.getElementById("greeting").textContent = greeting;
+    document.getElementById("event").textContent = "to " + eventName;
+    document.getElementById("when").textContent  = EVENT.when;
+    document.getElementById("where").textContent = EVENT.where;
+    document.getElementById("bring").textContent = EVENT.bring;
+    document.getElementById("host").textContent  = EVENT.host;
+
+    // The browser tab says who it is for, too.
+    document.title = guest ? guest + ", you're invited to " + eventName : "You're invited to " + eventName;
+
+    // -------------------------------------------------------------
+    // THE LINK BUILDER
+    // -------------------------------------------------------------
+    const builder = document.getElementById("builder");
+    const guestIn = document.getElementById("guest");
+    const output  = document.getElementById("output");
+    const linkBox = document.getElementById("link");
+    const copyBtn = document.getElementById("copy");
+    const status  = document.getElementById("status");
+
+    builder.addEventListener("submit", function (event) {
+      event.preventDefault();                     // no page reload
+      const name = guestIn.value.trim().slice(0, MAX_LENGTH);
+      if (!name) {
+        status.textContent = "Type a name first.";
+        return;
+      }
+      // This page's own address, without anything after a ? or #...
+      const page = window.location.href.split("#")[0].split("?")[0];
+      // ...plus ?to= and the name. encodeURIComponent turns a space into
+      // %20 and any other awkward character into its code.
+      const link = page + "?to=" + encodeURIComponent(name) +
+                   (params.get("event") ? "&event=" + encodeURIComponent(eventName) : "");
+      linkBox.value = link;
+      output.hidden = false;
+      status.textContent = "Here is " + name + "'s link.";
+      linkBox.focus();
+      linkBox.select();
+    });
+
+    copyBtn.addEventListener("click", function () {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(linkBox.value).then(function () {
+          status.textContent = "Copied! Paste it into a text or an email.";
+        }, function () {
+          linkBox.select();
+          status.textContent = "Your browser would not copy it - it is selected, so press Ctrl+C (or Cmd+C).";
+        });
+      } else {
+        linkBox.select();
+        status.textContent = "It is selected - press Ctrl+C (or Cmd+C) to copy.";
+      }
+    });
+  </script>
+</body>
+</html>

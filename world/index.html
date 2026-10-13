@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campsite at Dusk</title>
+
+<!--
+  ==========================================================================
+  LIBRARIES THIS PAGE BORROWS
+  ==========================================================================
+  1. A-Frame, version 1.8.0
+     Where from:  aframe.io (A-Frame's own official site)
+     What it does: draws the whole 3D world and lets you walk around in it.
+                   Every tag below that starts with <a- comes from A-Frame.
+  ==========================================================================
+
+  v1.0 - initial build: campsite with tent, trees, lake and a campfire you
+         can light by clicking it or with the button under the scene.
+-->
+<script src="https://aframe.io/releases/1.8.0/aframe.min.js"></script>
+
+<style>
+  /* ---------- Page colors and fonts ---------- */
+  :root {
+    --ink: #1d2433;
+    --paper: #f6f3ee;
+    --accent: #c4512d;
+  }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  header, main { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  h1 { margin: 20px 0 6px; font-size: 1.6rem; }
+  .how { margin: 0 0 12px; }
+
+  /* ---------- The 3D scene ----------
+     A-Frame normally takes over the whole window. The "embedded" attribute
+     on <a-scene> lets it sit inside this box instead, so the description
+     can live underneath it. */
+  .scene-box {
+    height: 60vh;
+    min-height: 320px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+  }
+  a-scene { width: 100%; height: 100%; }
+
+  /* ---------- The button and the description ---------- */
+  button {
+    margin: 14px 0;
+    font: inherit;
+    font-size: 1.05rem;
+    padding: 10px 18px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+  }
+  /* A clear outline whenever the button is reached with the keyboard. */
+  button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .description { line-height: 1.6; max-width: 70ch; padding-bottom: 32px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Campsite at Dusk</h1>
+  <p class="how">
+    Click inside the scene, then walk with the <kbd>arrow keys</kbd> or <kbd>W A S D</kbd>.
+    Drag with the mouse to look around. Click the campfire to light it.
+  </p>
+</header>
+
+<main>
+  <!-- The 3D world. role="img" and aria-label tell a screen reader what
+       this box is, because it cannot see inside a 3D scene. The full
+       description is in the section further down. -->
+  <div class="scene-box" role="img" aria-label="A 3D campsite at dusk. A full description is below the scene.">
+    <!-- "cursor" lets the mouse click on things in the world.
+         "raycaster" says which things are clickable: anything with the class "clickable". -->
+    <a-scene embedded
+             cursor="rayOrigin: mouse"
+             raycaster="objects: .clickable"
+             renderer="colorManagement: true">
+
+      <!-- THE SKY: a warm dusk color. -->
+      <a-sky color="#f2a86b"></a-sky>
+
+      <!-- THE LIGHT: a soft glow over everything, plus a low "sun" from the west. -->
+      <a-entity light="type: ambient; color: #ffd9b3; intensity: 0.6"></a-entity>
+      <a-entity light="type: directional; color: #ff9d5c; intensity: 0.8" position="-5 3 -2"></a-entity>
+
+      <!-- THE GROUND: a big flat green square, 80 steps across.
+           rotation="-90 0 0" tips it over so it lies flat. -->
+      <a-plane width="80" height="80" rotation="-90 0 0" color="#5d7a3e"></a-plane>
+
+      <!-- THE LAKE: a smaller blue circle, just above the ground so it shows. -->
+      <a-circle radius="5" rotation="-90 0 0" position="8 0.02 -12" color="#3b6e8f"></a-circle>
+
+      <!-- THE TENT: a four-sided cone, which looks like a tent. -->
+      <a-cone radius-bottom="1.6" radius-top="0" height="2" segments-radial="4"
+              position="-3 1 -6" color="#d8b04a"></a-cone>
+
+      <!-- THE TREES: each tree is a brown trunk (cylinder) with a green top (cone). -->
+      <a-entity position="-7 0 -10">
+        <a-cylinder radius="0.25" height="1.5" position="0 0.75 0" color="#6b4a2b"></a-cylinder>
+        <a-cone radius-bottom="1.4" height="3.5" position="0 3 0" color="#2f5d34"></a-cone>
+      </a-entity>
+      <a-entity position="4 0 -9">
+        <a-cylinder radius="0.25" height="1.5" position="0 0.75 0" color="#6b4a2b"></a-cylinder>
+        <a-cone radius-bottom="1.2" height="3" position="0 2.7 0" color="#3a6b3f"></a-cone>
+      </a-entity>
+      <a-entity position="-1 0 -14">
+        <a-cylinder radius="0.3" height="2" position="0 1 0" color="#6b4a2b"></a-cylinder>
+        <a-cone radius-bottom="1.6" height="4" position="0 3.8 0" color="#2f5d34"></a-cone>
+      </a-entity>
+
+      <!-- A ROCK to sit on, by the fire. -->
+      <a-dodecahedron radius="0.45" position="1.4 0.3 -4" color="#8a8a86"></a-dodecahedron>
+
+      <!-- THE CAMPFIRE: two crossed logs, and a flame that starts small.
+           The whole group has the class "clickable", so clicking any part of it counts. -->
+      <a-entity id="campfire" class="clickable" position="0 0 -4">
+        <a-cylinder class="clickable" radius="0.08" height="1" rotation="90 30 0" position="0 0.1 0" color="#5a3b22"></a-cylinder>
+        <a-cylinder class="clickable" radius="0.08" height="1" rotation="90 -30 0" position="0 0.1 0" color="#5a3b22"></a-cylinder>
+        <a-cone id="flame" class="clickable" radius-bottom="0.25" height="0.4"
+                position="0 0.35 0" color="#ff7b1c"
+                material="emissive: #ff5a00; emissiveIntensity: 0.4"></a-cone>
+        <!-- The fire's own light. It starts off (intensity 0). -->
+        <a-entity id="fire-light" light="type: point; color: #ff8a3d; intensity: 0; distance: 8" position="0 1 0"></a-entity>
+      </a-entity>
+
+      <!-- THE CAMERA: you. It stands at eye height (1.6), back from the fire.
+           look-controls = drag to look. wasd-controls = arrow keys and WASD to walk. -->
+      <a-entity camera look-controls wasd-controls position="0 1.6 0"></a-entity>
+    </a-scene>
+  </div>
+
+  <!-- A real button does the same thing as clicking the fire, so the one
+       interactive part of the world also works from the keyboard. -->
+  <button id="fire-button" aria-pressed="false">Light the campfire</button>
+
+  <!-- Live region: a screen reader announces whatever is written here. -->
+  <p id="status" class="sr-status" aria-live="polite"></p>
+
+  <section class="description" aria-labelledby="desc-title">
+    <h2 id="desc-title">What is in this world</h2>
+    <p>
+      You are standing in a grassy clearing at dusk, under a warm orange sky.
+      A few steps in front of you is an unlit campfire: two crossed logs with a
+      small orange flame. A gray rock sits just to its right, for sitting on.
+      Beyond the fire, slightly to the left, is a yellow tent shaped like a
+      pyramid. Three pine trees stand around the edge of the clearing, and off
+      to the right, further away, is a round blue lake.
+    </p>
+    <p>
+      When the campfire is lit, the flame grows tall and bright and casts an
+      orange glow on everything nearby.
+    </p>
+  </section>
+</main>
+
+<script>
+  // ------------------------------------------------------------------
+  // LIGHTING THE FIRE
+  // One function does the work, so clicking the fire in 3D and pressing
+  // the button underneath always behave exactly the same way.
+  // ------------------------------------------------------------------
+  const campfire  = document.getElementById('campfire');
+  const flame     = document.getElementById('flame');
+  const fireLight = document.getElementById('fire-light');
+  const button    = document.getElementById('fire-button');
+  const status    = document.getElementById('status');
+
+  let isLit = false;   // remembers whether the fire is lit right now
+
+  function toggleFire() {
+    isLit = !isLit;    // flip it: lit becomes unlit, unlit becomes lit
+
+    if (isLit) {
+      // A tall, bright flame and a strong orange light.
+      flame.setAttribute('height', 1.2);
+      flame.setAttribute('radius-bottom', 0.4);
+      flame.setAttribute('position', '0 0.75 0');
+      flame.setAttribute('material', 'emissive: #ff5a00; emissiveIntensity: 1');
+      fireLight.setAttribute('light', 'intensity', 2.5);
+      button.textContent = 'Put out the campfire';
+      status.textContent = 'The campfire is lit.';
+    } else {
+      // Back to the small, dim starting flame, and the fire's light off.
+      flame.setAttribute('height', 0.4);
+      flame.setAttribute('radius-bottom', 0.25);
+      flame.setAttribute('position', '0 0.35 0');
+      flame.setAttribute('material', 'emissive: #ff5a00; emissiveIntensity: 0.4');
+      fireLight.setAttribute('light', 'intensity', 0);
+      button.textContent = 'Light the campfire';
+      status.textContent = 'The campfire is out.';
+    }
+    // aria-pressed tells a screen reader whether the button is "on" or "off".
+    button.setAttribute('aria-pressed', String(isLit));
+  }
+
+  // Clicking the fire inside the 3D world...
+  campfire.addEventListener('click', toggleFire);
+  // ...or pressing the button underneath it.
+  button.addEventListener('click', toggleFire);
+</script>
+</body>
+</html>

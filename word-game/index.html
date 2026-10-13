@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Game</title>
+<!--
+  v1.0 - built mouse-only, from the normal prompt and specification.
+  v2.0 - the five ingredients, fixed one at a time:
+         1. Keyboard  - type letters, Backspace and Enter on a real keyboard,
+                        and every on-screen key is a real <button>.
+         2. Focus     - a thick outline shows which key the Tab key is on.
+         3. Color     - every colored tile also carries a symbol and a name,
+                        so the color is never the only signal.
+         4. Announcement - each guess is read out in words.
+         5. Names     - every key and tile has a name a screen reader can say.
+-->
+<style>
+  /* ---------- Colors ----------
+     Each state has a color AND a symbol (see the legend), so nobody has
+     to tell green from yellow from gray to play. */
+  :root {
+    --ink: #1d2433; --paper: #f7f7f5; --line: #c9ccd3;
+    --right: #3f8a3a;    /* right letter, right place */
+    --moved: #b7922a;    /* right letter, wrong place */
+    --absent: #6b7079;   /* not in the word */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink); background: var(--paper);
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { margin: 8px 0 4px; }
+  .how { margin: 0 0 8px; text-align: center; max-width: 40ch; }
+
+  /* ---------- Legend: what the colors and symbols mean ---------- */
+  .legend { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: center; font-size: 0.9rem; }
+  .legend span { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 4px; color: #fff; font-weight: 700; margin-right: 4px; }
+
+  /* ---------- The grid of tiles ---------- */
+  .board { display: grid; gap: 6px; margin-bottom: 16px; }
+  .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; list-style: none; padding: 0; margin: 0; }
+  .tile {
+    position: relative;
+    width: clamp(48px, 15vw, 60px); aspect-ratio: 1;
+    display: grid; place-items: center;
+    border: 2px solid var(--line); background: #fff;
+    font-size: 1.8rem; font-weight: 700; text-transform: uppercase;
+  }
+  .tile.filled { border-color: #8a8f99; }
+  .tile.right, .tile.moved, .tile.absent { color: #fff; border-color: transparent; }
+  .tile.right { background: var(--right); }
+  .tile.moved { background: var(--moved); }
+  .tile.absent { background: var(--absent); }
+  /* The second signal: a small symbol in the corner of every colored tile. */
+  .tile .mark { position: absolute; top: 2px; right: 4px; font-size: 0.8rem; }
+
+  /* ---------- The on-screen keyboard ---------- */
+  .keys { display: grid; gap: 6px; width: min(100%, 500px); }
+  .keyrow { display: flex; gap: 5px; justify-content: center; }
+  .keys button {
+    flex: 1; min-width: 0; height: 52px;
+    font: inherit; font-weight: 700; text-transform: uppercase;
+    border: 0; border-radius: 6px; background: #dfe2e7; color: var(--ink); cursor: pointer;
+  }
+  .keys button.wide { flex: 1.6; font-size: 0.8rem; }
+  .keys button.right { background: var(--right); color: #fff; }
+  .keys button.moved { background: var(--moved); color: #fff; }
+  .keys button.absent { background: var(--absent); color: #fff; }
+  /* Ingredient 2: you can always see where the keyboard is. */
+  button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+  #message { min-height: 1.6em; font-weight: 700; margin: 8px 0; text-align: center; }
+  #again { margin-top: 8px; padding: 10px 18px; font: inherit; font-weight: 700; border: 0; border-radius: 8px; background: var(--ink); color: #fff; cursor: pointer; }
+  #again[hidden] { display: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<h1>Word Game</h1>
+<p class="how">Guess the five-letter word in six tries. Type on your keyboard, or click the keys below.</p>
+
+<ul class="legend" aria-label="What the colors mean">
+  <li><span style="background:var(--right)">✓</span>Right letter, right place</li>
+  <li><span style="background:var(--moved)">↔</span>In the word, wrong place</li>
+  <li><span style="background:var(--absent)">✕</span>Not in the word</li>
+</ul>
+
+<div class="board" id="board" aria-label="Your guesses"></div>
+
+<p id="message" aria-hidden="true"></p>
+<!-- Ingredient 4: screen readers hear everything written here. -->
+<p id="announce" class="sr-only" aria-live="polite"></p>
+
+<div class="keys" id="keys" aria-label="On-screen keyboard"></div>
+<button id="again" hidden>Play again</button>
+
+<script>
+  // ==================================================================
+  // THE WORDS. Edit freely - five letters each, lowercase.
+  // ==================================================================
+  const WORDS = [
+    'crane', 'light', 'brave', 'smile', 'ocean', 'plant', 'storm', 'grape',
+    'lemon', 'tiger', 'chair', 'bread', 'spice', 'river', 'cloud', 'flame',
+    'house', 'music', 'peach', 'robot', 'snack', 'train', 'water', 'pixel'
+  ];
+  const TRIES = 6;
+  const LENGTH = 5;
+
+  // Names for each result, used for the symbols and for screen readers.
+  const RESULT = {
+    right:  { mark: '✓', words: 'right place' },
+    moved:  { mark: '↔', words: 'in the word, wrong place' },
+    absent: { mark: '✕', words: 'not in the word' }
+  };
+
+  const board = document.getElementById('board');
+  const keys = document.getElementById('keys');
+  const message = document.getElementById('message');
+  const announce = document.getElementById('announce');
+  const again = document.getElementById('again');
+
+  let answer, row, current, over;
+
+  // Say something on screen AND out loud for screen readers.
+  function say(text) {
+    message.textContent = text;
+    announce.textContent = text;
+  }
+
+  // ------------------------------------------------------------------
+  // BUILD THE BOARD: six rows of five empty tiles.
+  // ------------------------------------------------------------------
+  function buildBoard() {
+    board.innerHTML = '';
+    for (let r = 0; r < TRIES; r++) {
+      const ul = document.createElement('ul');
+      ul.className = 'row';
+      ul.setAttribute('aria-label', 'Guess ' + (r + 1) + ' of ' + TRIES);
+      for (let c = 0; c < LENGTH; c++) {
+        const li = document.createElement('li');
+        li.className = 'tile';
+        li.setAttribute('aria-label', 'empty');
+        ul.appendChild(li);
+      }
+      board.appendChild(ul);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // BUILD THE KEYBOARD. Ingredient 1 and 5: every key is a real <button>,
+  // so Tab reaches it, Enter and Space press it, and it has a name.
+  // ------------------------------------------------------------------
+  function buildKeys() {
+    keys.innerHTML = '';
+    ['qwertyuiop', 'asdfghjkl', 'Ezxcvbnm<'].forEach(function (line) {
+      const div = document.createElement('div');
+      div.className = 'keyrow';
+      for (const ch of line) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        if (ch === 'E') {
+          button.textContent = 'Enter'; button.className = 'wide'; button.dataset.key = 'Enter';
+          button.setAttribute('aria-label', 'Enter guess');
+        } else if (ch === '<') {
+          button.textContent = '⌫'; button.className = 'wide'; button.dataset.key = 'Backspace';
+          button.setAttribute('aria-label', 'Delete letter');
+        } else {
+          button.textContent = ch; button.dataset.key = ch;
+          button.setAttribute('aria-label', ch.toUpperCase());
+        }
+        button.addEventListener('click', function () { press(button.dataset.key); });
+        div.appendChild(button);
+      }
+      keys.appendChild(div);
+    });
+  }
+
+  function newGame() {
+    answer = WORDS[Math.floor(Math.random() * WORDS.length)];
+    row = 0; current = ''; over = false;
+    buildBoard(); buildKeys();
+    again.hidden = true;
+    say('New game. Guess a five-letter word.');
+  }
+
+  // ------------------------------------------------------------------
+  // ONE KEY PRESS, from the screen or the real keyboard.
+  // ------------------------------------------------------------------
+  function press(key) {
+    if (over) return;
+    if (key === 'Enter') return submit();
+    if (key === 'Backspace') {
+      current = current.slice(0, -1);
+    } else if (/^[a-z]$/.test(key) && current.length < LENGTH) {
+      current += key;
+    } else {
+      return;
+    }
+    // Show the letters typed so far in the current row.
+    const tiles = board.children[row].children;
+    for (let c = 0; c < LENGTH; c++) {
+      tiles[c].textContent = current[c] || '';
+      tiles[c].classList.toggle('filled', Boolean(current[c]));
+      tiles[c].setAttribute('aria-label', current[c] ? current[c].toUpperCase() : 'empty');
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // CHECK A GUESS. Greens first, then yellows, so a letter that appears
+  // once in the answer is never counted twice.
+  // ------------------------------------------------------------------
+  function score(guess) {
+    const result = Array(LENGTH).fill('absent');
+    const left = answer.split('');
+    for (let i = 0; i < LENGTH; i++) {
+      if (guess[i] === answer[i]) { result[i] = 'right'; left[i] = null; }
+    }
+    for (let i = 0; i < LENGTH; i++) {
+      if (result[i] === 'right') continue;
+      const spot = left.indexOf(guess[i]);
+      if (spot !== -1) { result[i] = 'moved'; left[spot] = null; }
+    }
+    return result;
+  }
+
+  function submit() {
+    if (current.length < LENGTH) { say('Not enough letters. Five, please.'); return; }
+    const guess = current;
+    const result = score(guess);
+    const tiles = board.children[row].children;
+    const spoken = [];
+
+    result.forEach(function (state, i) {
+      const letter = guess[i].toUpperCase();
+      tiles[i].className = 'tile ' + state;
+      tiles[i].innerHTML = '';
+      tiles[i].append(letter);
+      const mark = document.createElement('span');
+      mark.className = 'mark';
+      mark.setAttribute('aria-hidden', 'true');
+      mark.textContent = RESULT[state].mark;
+      tiles[i].appendChild(mark);
+      tiles[i].setAttribute('aria-label', letter + ', ' + RESULT[state].words);
+      spoken.push(letter + ' ' + RESULT[state].words);
+      colorKey(guess[i], state);
+    });
+
+    // Ingredient 4: the whole result, in words.
+    let text = 'Guess ' + (row + 1) + ': ' + guess.toUpperCase() + '. ' + spoken.join(', ') + '.';
+    row += 1;
+    current = '';
+    if (guess === answer) {
+      over = true; text = 'You got it in ' + row + '! The word was ' + answer.toUpperCase() + '.';
+    } else if (row === TRIES) {
+      over = true; text += ' Out of tries. The word was ' + answer.toUpperCase() + '.';
+    }
+    say(text);
+    if (over) { again.hidden = false; again.focus(); }
+  }
+
+  // Color the on-screen key too - but never downgrade a green to yellow.
+  function colorKey(letter, state) {
+    const button = keys.querySelector('[data-key="' + letter + '"]');
+    const rank = { absent: 1, moved: 2, right: 3 };
+    const now = ['right', 'moved', 'absent'].find(function (s) { return button.classList.contains(s); });
+    if (now && rank[now] >= rank[state]) return;
+    button.classList.remove('right', 'moved', 'absent');
+    button.classList.add(state);
+    button.setAttribute('aria-label', letter.toUpperCase() + ', ' + RESULT[state].words);
+  }
+
+  // The real keyboard. Ignored while focus is on an on-screen button and
+  // Enter is pressed, so Enter presses that button instead of guessing twice.
+  window.addEventListener('keydown', function (event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === 'Enter' && event.target.tagName === 'BUTTON') return;
+    if (event.key === 'Enter' || event.key === 'Backspace') { event.preventDefault(); press(event.key); }
+    else if (/^[a-zA-Z]$/.test(event.key)) press(event.key.toLowerCase());
+  });
+
+  again.addEventListener('click', newGame);
+  newGame();
+</script>
+</body>
+</html>

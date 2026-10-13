@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<!--
+  Magic 8-Ball
+  v1.0 - example build for Vibe Coding lab 4.1 (Apps worth sharing)
+
+  Ask a yes-or-no question, press Ask (or Enter), and one answer from the
+  list at the top of the script floats up in the little window.
+
+  Privacy: nothing leaves this page. It makes no network requests, saves
+  nothing, and never even reads the question you type - that is the joke.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magic 8-Ball</title>
+  <style>
+    /* -------------------------------------------------------------
+       COLORS AND SIZES - change the look here, in one place
+       ------------------------------------------------------------- */
+    :root {
+      --page:    #1b1530;   /* deep purple night sky */
+      --ink:     #f4f1ff;   /* main text (very high contrast on --page) */
+      --soft:    #c9c2e6;   /* secondary text */
+      --window:  #2b3fd6;   /* the blue triangle-window inside the ball */
+      --accent:  #ffd166;   /* the Ask button */
+      --radius:  14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      padding: 1.5rem 1rem 3rem;
+      background: radial-gradient(circle at 50% 30%, #2c2350, var(--page) 70%);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      text-align: center;
+    }
+
+    h1 { margin: 0; font-size: clamp(1.8rem, 6vw, 2.6rem); letter-spacing: 0.02em; }
+    .hint { margin: 0; color: var(--soft); }
+
+    /* -------------------------------------------------------------
+       THE BALL - a black circle with a shine, and a round window
+       ------------------------------------------------------------- */
+    .ball {
+      width: min(78vw, 320px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle at 32% 28%, #5b5b6b 0%, #1c1c24 22%, #050507 70%);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), inset -12px -18px 40px rgba(0, 0, 0, 0.8);
+      display: grid;
+      place-items: center;
+    }
+
+    /* The dark round window in the middle of the ball. */
+    .window {
+      width: 48%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle, #10143a 55%, #05061a 100%);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    /* The blue triangle that carries the answer, like the real toy. */
+    .answer {
+      width: 92%;
+      aspect-ratio: 1.1;
+      clip-path: polygon(50% 100%, 0 12%, 100% 12%);
+      background: var(--window);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 18% 16% 0;
+      font-size: clamp(0.7rem, 2.6vw, 0.85rem);
+      font-weight: 700;
+      line-height: 1.2;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      opacity: 0;                         /* hidden until the first answer */
+    }
+
+    /* The answer floats up and fades in. The class is added by the script. */
+    .answer.show { animation: float-up 1.4s ease-out forwards; }
+    @keyframes float-up {
+      from { opacity: 0; transform: translateY(18px) scale(0.9); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* A little shake when you ask. */
+    .ball.shake { animation: shake 0.5s ease-in-out; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0) rotate(0); }
+      25%      { transform: translateX(-10px) rotate(-4deg); }
+      75%      { transform: translateX(10px) rotate(4deg); }
+    }
+
+    /* Some people get unwell from movement on screen. If their device asks
+       for less motion, the answer simply appears and the ball stays still. */
+    @media (prefers-reduced-motion: reduce) {
+      .answer.show { animation: none; opacity: 1; }
+      .ball.shake  { animation: none; }
+    }
+
+    /* -------------------------------------------------------------
+       THE QUESTION FORM
+       ------------------------------------------------------------- */
+    form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      justify-content: center;
+      width: min(100%, 460px);
+    }
+    label { width: 100%; font-weight: 600; }
+    input {
+      flex: 1 1 220px;
+      padding: 0.8rem 1rem;
+      border-radius: var(--radius);
+      border: 2px solid #4b4270;
+      background: #120e22;
+      color: var(--ink);
+      font-size: 1rem;
+    }
+    button {
+      padding: 0.8rem 1.6rem;
+      border: 0;
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: #1b1530;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover { filter: brightness(1.08); }
+
+    /* A clear, thick focus ring so keyboard users always know where they are. */
+    input:focus-visible, button:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    /* Hidden on screen, still read aloud by screen readers. */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip: rect(0 0 0 0); white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Magic 8-Ball</h1>
+    <p class="hint">Ask it a yes-or-no question. It knows. (It does not know.)</p>
+  </header>
+
+  <main>
+    <!-- The ball itself is decoration, so it is hidden from screen readers.
+         The answer is announced separately, through the live region below. -->
+    <div class="ball" id="ball" aria-hidden="true">
+      <div class="window">
+        <div class="answer" id="answer-visual"></div>
+      </div>
+    </div>
+
+    <!-- aria-live="polite" means a screen reader reads each new answer out
+         loud, without interrupting whatever it was already saying. -->
+    <p class="sr-only" id="answer-spoken" aria-live="polite"></p>
+  </main>
+
+  <form id="ask-form">
+    <label for="question">Your question</label>
+    <input id="question" type="text" maxlength="120" autocomplete="off"
+           placeholder="Should I have pizza for breakfast?">
+    <button type="submit">Ask</button>
+  </form>
+
+  <script>
+    // v1.0 - initial build
+
+    // =============================================================
+    // THE ANSWERS - edit these! This list is the only part of the app
+    // that is really yours. Add, remove or rewrite any of them.
+    // Want "yes" to come up more often? Put a yes in twice.
+    // =============================================================
+    const ANSWERS = [
+      "Signs point to yes",
+      "Absolutely",
+      "Only if you bring snacks",
+      "Ask again after coffee",
+      "My sources say no. My sources are a cat",
+      "Without a doubt",
+      "Not today, friend",
+      "The stars are busy. Try later",
+      "Yes, but tell no one",
+      "Very doubtful",
+      "It is certain",
+      "Maybe. Probably. Who knows"
+    ];
+
+    // Grab the parts of the page the script needs to talk to.
+    const form         = document.getElementById("ask-form");
+    const ball         = document.getElementById("ball");
+    const answerVisual = document.getElementById("answer-visual");
+    const answerSpoken = document.getElementById("answer-spoken");
+
+    // Pick one answer at random. Math.random() gives a number from 0 up to
+    // (but not including) 1; multiplying by the list length and rounding down
+    // turns that into a position in the list - 0, 1, 2 and so on.
+    function pickAnswer() {
+      const position = Math.floor(Math.random() * ANSWERS.length);
+      return ANSWERS[position];
+    }
+
+    // When the form is sent (the Ask button, or Enter in the box)...
+    form.addEventListener("submit", function (event) {
+      // ...stop the browser from reloading the page, which is what a form
+      // does by default. Without this line, Enter would wipe everything.
+      event.preventDefault();
+
+      const answer = pickAnswer();
+
+      // Restart the animations. Removing the classes, forcing the browser to
+      // notice (reading offsetWidth does that), then adding them back makes
+      // the shake and the float-up play again on every ask.
+      ball.classList.remove("shake");
+      answerVisual.classList.remove("show");
+      void ball.offsetWidth;
+      ball.classList.add("shake");
+      answerVisual.classList.add("show");
+
+      // textContent puts the answer in as plain text - never as code.
+      answerVisual.textContent = answer;
+
+      // Empty the spoken line first, then fill it a moment later, so a screen
+      // reader still announces the answer when it is the same as last time.
+      answerSpoken.textContent = "";
+      setTimeout(function () {
+        answerSpoken.textContent = "The 8-Ball says: " + answer;
+      }, 50);
+    });
+  </script>
+</body>
+</html>

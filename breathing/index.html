@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<!--
+  Breathing Buddy
+  v1.0 - example build for Vibe Coding lab 4.3 (Apps worth sharing)
+
+  A circle that paces your breathing. It grows while you breathe in,
+  waits while you hold, shrinks while you breathe out, and waits again.
+  Two patterns: box breathing (4-4-4-4) and 4-7-8.
+
+  Palette from coolors.co: #264653 (background), #2a9d8f (circle),
+  #e9f5f2 (words), #e9c46a (buttons).
+
+  Privacy: nothing leaves this page, and nothing is saved.
+  Accessibility: if the device asks for reduced motion, the circle stays
+  still and the words and countdown do the pacing on their own.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Breathing Buddy</title>
+  <style>
+    /* -------------------------------------------------------------
+       COLORS - the coolors.co palette, in one place
+       ------------------------------------------------------------- */
+    :root {
+      --page:   #264653;   /* deep blue-green: calm, low energy */
+      --circle: #2a9d8f;   /* soft teal */
+      --glow:   rgba(42, 157, 143, 0.35);
+      --ink:    #e9f5f2;   /* near-white words (about 9:1 on --page) */
+      --soft:   #b9d6d0;
+      --button: #e9c46a;   /* warm sand, for the one thing you press */
+      --radius: 999px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.25rem;
+      padding: 1.5rem 1rem 2.5rem;
+      background: var(--page);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      text-align: center;
+    }
+
+    h1 { margin: 0; font-weight: 500; letter-spacing: 0.04em; font-size: clamp(1.5rem, 5vw, 2rem); }
+    .hint { margin: 0; color: var(--soft); }
+
+    /* -------------------------------------------------------------
+       THE CIRCLE
+       Its size is set by the script through the --scale value. The
+       transition is what makes it GROW rather than jump: the script
+       also sets how long the change takes, to match each phase.
+       ------------------------------------------------------------- */
+    .stage {
+      width: min(80vw, 340px);
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+    }
+    .circle {
+      --scale: 0.45;
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 35%, #3fb8a8, var(--circle) 65%);
+      box-shadow: 0 0 60px var(--glow);
+      transform: scale(var(--scale));
+      transition-property: transform;
+      transition-timing-function: ease-in-out;
+      transition-duration: 1s;
+    }
+
+    /* Reduced motion: the circle does not move at all. */
+    @media (prefers-reduced-motion: reduce) {
+      .circle { transform: scale(0.7); transition: none; }
+    }
+
+    /* The words: what to do now, and how many seconds are left. */
+    .phase { margin: 0; font-size: clamp(1.6rem, 7vw, 2.4rem); min-height: 1.3em; }
+    .count { margin: 0; font-size: 1.2rem; color: var(--soft); min-height: 1.4em; font-variant-numeric: tabular-nums; }
+
+    /* -------------------------------------------------------------
+       CONTROLS
+       ------------------------------------------------------------- */
+    .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; align-items: center; }
+    button, select {
+      font: inherit;
+      font-size: 1rem;
+      padding: 0.75rem 1.6rem;
+      border-radius: var(--radius);
+      border: 2px solid var(--button);
+      cursor: pointer;
+    }
+    button { background: var(--button); color: #264653; font-weight: 700; }
+    button.secondary { background: transparent; color: var(--ink); }
+    select { background: #1e3a45; color: var(--ink); border-color: #4c7a7f; }
+    label { color: var(--soft); }
+
+    button:focus-visible, select:focus-visible {
+      outline: 3px solid var(--ink);
+      outline-offset: 3px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Breathing Buddy</h1>
+    <p class="hint">Follow the circle. Breathe through your nose if you can.</p>
+  </header>
+
+  <main>
+    <!-- The circle is decoration for sighted users; the words below carry
+         the same information for everyone, so the circle is hidden from
+         screen readers. -->
+    <div class="stage" aria-hidden="true">
+      <div class="circle" id="circle"></div>
+    </div>
+
+    <!-- The phase is announced when it changes (every few seconds). The
+         countdown is NOT announced - a voice saying a number every second
+         would be the opposite of calm. -->
+    <p class="phase" id="phase" aria-live="polite">Ready when you are</p>
+    <p class="count" id="count" aria-hidden="true"></p>
+  </main>
+
+  <div class="controls">
+    <label for="pattern">Pattern</label>
+    <select id="pattern"></select>
+    <button id="start" type="button">Start</button>
+    <button id="stop" type="button" class="secondary" disabled>Stop</button>
+  </div>
+
+  <script>
+    // v1.0 - initial build
+
+    // =============================================================
+    // THE PATTERNS - safe to edit. Each step has the words to show,
+    // how many seconds it lasts, and how big the circle should be
+    // (1 = full size, 0.45 = small).
+    // =============================================================
+    const PATTERNS = {
+      "Box breathing (4-4-4-4)": [
+        { words: "Breathe in",  seconds: 4, size: 1    },
+        { words: "Hold",        seconds: 4, size: 1    },
+        { words: "Breathe out", seconds: 4, size: 0.45 },
+        { words: "Hold",        seconds: 4, size: 0.45 }
+      ],
+      "4-7-8 breathing": [
+        { words: "Breathe in",  seconds: 4, size: 1    },
+        { words: "Hold",        seconds: 7, size: 1    },
+        { words: "Breathe out", seconds: 8, size: 0.45 }
+      ]
+    };
+
+    const circle  = document.getElementById("circle");
+    const phaseEl = document.getElementById("phase");
+    const countEl = document.getElementById("count");
+    const select  = document.getElementById("pattern");
+    const start   = document.getElementById("start");
+    const stop    = document.getElementById("stop");
+
+    // Fill the pattern menu from the list above.
+    Object.keys(PATTERNS).forEach(function (name) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+
+    // What the app is doing right now.
+    let running = false;
+    let timer = null;          // the one-second tick; only ever one at a time
+    let stepIndex = 0;         // which step of the pattern we are on
+    let secondsLeft = 0;       // countdown within that step
+
+    // Begin one step: set the words, the countdown, and send the circle
+    // on its way to its new size over exactly that many seconds.
+    function beginStep() {
+      const steps = PATTERNS[select.value];
+      const step = steps[stepIndex];
+      secondsLeft = step.seconds;
+      phaseEl.textContent = step.words;
+      countEl.textContent = secondsLeft;
+      circle.style.transitionDuration = step.seconds + "s";
+      circle.style.setProperty("--scale", step.size);
+    }
+
+    // Called once a second while running.
+    function tick() {
+      secondsLeft = secondsLeft - 1;
+      if (secondsLeft > 0) {
+        countEl.textContent = secondsLeft;
+        return;
+      }
+      // That step is over: move to the next one, wrapping back to the start.
+      const steps = PATTERNS[select.value];
+      stepIndex = (stepIndex + 1) % steps.length;
+      beginStep();
+    }
+
+    start.addEventListener("click", function () {
+      if (running) return;     // pressing Start twice must not start two timers
+      running = true;
+      start.disabled = true;
+      stop.disabled = false;
+      select.disabled = true;
+      stepIndex = 0;
+      beginStep();
+      timer = setInterval(tick, 1000);
+      stop.focus();
+    });
+
+    stop.addEventListener("click", function () {
+      clearInterval(timer);
+      timer = null;
+      running = false;
+      start.disabled = false;
+      stop.disabled = true;
+      select.disabled = false;
+      phaseEl.textContent = "Nice work";
+      countEl.textContent = "";
+      circle.style.transitionDuration = "1.5s";
+      circle.style.setProperty("--scale", 0.45);   // settle back down
+      start.focus();
+    });
+  </script>
+</body>
+</html>

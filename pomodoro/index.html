@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pomodoro Timer</title>
+  <style>
+    :root {
+      --primary-color: #c0392b;
+      --page-bg: #1c1c1e;
+      --text: #f5f5f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--page-bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      text-align: center;
+    }
+    h1 { font-size: 1.3rem; font-weight: 500; letter-spacing: 0.08em;
+         text-transform: uppercase; color: #9a9aa0; margin: 0 0 1rem; }
+
+    /* clamp() picks a size between the first and last values depending on the
+       screen width. Big on a laptop, still readable on a phone. */
+    #display {
+      font-size: clamp(4rem, 22vw, 10rem);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;  /* stops the digits jiggling */
+      line-height: 1;
+      margin: 0 0 1.5rem;
+      color: var(--primary-color);
+    }
+    .buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
+    button {
+      font: inherit;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0.7rem 1.6rem;
+      border: 2px solid var(--primary-color);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text);
+    }
+    button:hover { background: var(--primary-color); }
+    button:focus-visible { outline: 3px solid #ffb300; outline-offset: 3px; }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Focus</h1>
+
+    <!-- role="timer" plus aria-live tells assistive technology this number
+         updates by itself. "polite" means wait for a pause before announcing. -->
+    <p id="display" role="timer" aria-live="polite">25:00</p>
+
+    <div class="buttons">
+      <button id="start-button">Start</button>
+      <button id="pause-button">Pause</button>
+      <button id="reset-button">Reset</button>
+    </div>
+  </main>
+
+  <script>
+    // ==========================================================
+    // Pomodoro Timer
+    // v1.1 - work length moved to a setting at the top
+    // v1.0 - initial build, fixed at 25 minutes
+    // ==========================================================
+
+    // ---------- THE SETTING YOU CAN CHANGE ----------
+    // Change this one number and the whole timer changes. Nothing else in the
+    // file needs touching. Try 20, or 50, or 1 if you want to test it quickly.
+    const WORK_MINUTES = 25;
+    // ------------------------------------------------
+
+    const display     = document.getElementById("display");
+    const startButton = document.getElementById("start-button");
+    const pauseButton = document.getElementById("pause-button");
+    const resetButton = document.getElementById("reset-button");
+
+    // How many seconds are left. We count in seconds and convert for display,
+    // because seconds are easier to subtract one from than "25:00" is.
+    let secondsLeft = WORK_MINUTES * 60;
+
+    // setInterval hands back a ticket number so we can stop it again later.
+    // null means "nothing is running right now".
+    let ticker = null;
+
+    // ---- Turn a number of seconds into 25:00 ----
+    function showTime() {
+      const minutes = Math.floor(secondsLeft / 60);
+      const seconds = secondsLeft % 60;   // % is the remainder after dividing
+
+      // padStart makes "7" into "07" so the clock never reads 25:7
+      display.textContent = minutes + ":" + String(seconds).padStart(2, "0");
+    }
+
+    // ---- One tick, once a second ----
+    function tick() {
+      secondsLeft = secondsLeft - 1;
+      showTime();
+
+      if (secondsLeft <= 0) {
+        stopTimer();
+        display.textContent = "Done";
+      }
+    }
+
+    function startTimer() {
+      // If a ticker is already running, do nothing. Without this, clicking
+      // Start twice makes the clock run at double speed - a real bug, and a
+      // very common one.
+      if (ticker !== null) return;
+      ticker = setInterval(tick, 1000);   // 1000 milliseconds = 1 second
+    }
+
+    function stopTimer() {
+      clearInterval(ticker);
+      ticker = null;
+    }
+
+    function resetTimer() {
+      stopTimer();
+      secondsLeft = WORK_MINUTES * 60;
+      showTime();
+    }
+
+    startButton.addEventListener("click", startTimer);
+    pauseButton.addEventListener("click", stopTimer);
+    resetButton.addEventListener("click", resetTimer);
+
+    // Show the starting time as soon as the page opens.
+    showTime();
+  </script>
+</body>
+</html>

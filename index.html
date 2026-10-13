@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dave's Vibe Coding Apps</title>
+<!--
+  v1.0 - initial build: the hub page. One link to every app in this repo,
+         grouped by when it was built.
+
+  THE LIST OF APPS lives in the APPS array at the top of the script below.
+  Add an app: add one line there. Nothing else needs to change.
+  Each "folder" must match the folder name on GitHub EXACTLY - capitals,
+  hyphens and all - or the link leads to the 404 page.
+-->
+<style>
+  /* ---------- Colors and fonts, shared with the 404 page ---------- */
+  :root {
+    --ink: #1d2433;
+    --muted: #5b6475;
+    --paper: #f6f3ee;
+    --card: #ffffff;
+    --line: #e2ddd3;
+    --accent: #264653;
+    --accent-2: #2a9d8f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.55;
+  }
+  header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  header { padding-top: 40px; }
+  h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 5vw, 2.6rem); }
+  .intro { max-width: 60ch; color: var(--muted); margin: 0 0 8px; }
+  h2 { margin: 36px 0 12px; font-size: 1.15rem; color: var(--accent); }
+
+  /* ---------- The grid of app cards ---------- */
+  ul.apps {
+    list-style: none; padding: 0; margin: 0;
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+  .apps a {
+    display: block; height: 100%;
+    padding: 14px 16px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 5px solid var(--accent-2);
+    border-radius: 10px;
+    color: inherit; text-decoration: none;
+  }
+  .apps a:hover { border-color: var(--accent); }
+  /* A thick, clear outline when a card is reached with the Tab key. */
+  .apps a:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .name { display: block; font-weight: 700; color: var(--accent); }
+  .what { display: block; font-size: 0.95rem; color: var(--muted); }
+  footer { padding: 40px 16px; color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dave's Vibe Coding Apps</h1>
+  <p class="intro">
+    Every app here was built by describing it to an AI in plain words, the same
+    way you will. They are the examples for CSC 145. Open any of them, poke at
+    it, and then go and make your own.
+  </p>
+</header>
+
+<main id="list"></main>
+
+<footer>
+  <p>Built with AI, one prompt at a time. Nothing on these pages sends your data anywhere.</p>
+</footer>
+
+<script>
+  // ==================================================================
+  // THE APPS. One line per app: which group it is in, the folder name on
+  // GitHub, the name to show, and a few words about it.
+  // ==================================================================
+  const APPS = [
+    { group: 'First builds',        folder: 'qr-code',          name: 'QR Code Generator',      what: 'Type anything, get a QR code.' },
+    { group: 'First builds',        folder: 'hello',            name: 'Hello, World',           what: 'The one typed by hand.' },
+    { group: 'First builds',        folder: 'pomodoro',         name: 'Pomodoro Timer',         what: 'Twenty-five minutes of focus.' },
+    { group: 'First builds',        folder: 'countdown',        name: 'Countdown',              what: 'Days until something worth waiting for.' },
+    { group: 'Pages and pictures',  folder: 'recipe',           name: 'Recipe Card',            what: 'With a photo, and a notes page.' },
+    { group: 'Pages and pictures',  folder: 'pictures',         name: 'A Page of Pictures',     what: 'A slider of photo cards with captions.' },
+    { group: 'Pages and pictures',  folder: 'my-page',          name: 'My Page',                what: 'Built from the interview prompt.' },
+    { group: 'Apps worth sharing',  folder: 'magic-8-ball',     name: 'Magic 8-Ball',           what: 'Ask it anything.' },
+    { group: 'Apps worth sharing',  folder: 'decision-maker',   name: 'Decision Maker',         what: 'Cannot choose? It can.' },
+    { group: 'Apps worth sharing',  folder: 'decision-maker-2', name: 'Decision Maker 2',       what: 'Your list, saved in the link.' },
+    { group: 'Apps worth sharing',  folder: 'breathing',        name: 'Breathing Buddy',        what: 'Breathe in, breathe out.' },
+    { group: 'Apps worth sharing',  folder: 'invite',           name: 'Invite From a Link',     what: 'A personal invitation in the address.' },
+    { group: 'Apps worth sharing',  folder: 'adventure',        name: 'Choose Your Own Adventure', what: 'Every choice is a fork in the road.' },
+    { group: 'Accessible apps',     folder: 'word-game',        name: 'Word Game',              what: 'Guess the word - with or without a mouse.' },
+    { group: 'Accessible apps',     folder: 'sign-up',          name: 'Sign-Up Sheet',          what: 'A form the keyboard can finish.' },
+    { group: 'Borrowed superpowers', folder: 'world',           name: 'Campsite at Dusk',       what: 'A 3D world, built with A-Frame.' },
+    { group: 'Borrowed superpowers', folder: 'roll-the-ball',   name: 'Roll the Ball',          what: 'A tiny 3D game, built with Three.js.' },
+    { group: 'Borrowed superpowers', folder: 'googly-eyes',     name: 'Googly Eyes',            what: 'Face tracking with MediaPipe.' },
+    { group: 'Borrowed superpowers', folder: 'pdf-toolkit',     name: 'PDF Toolkit',            what: 'Merge and stamp PDFs, privately.' },
+    { group: 'Borrowed superpowers', folder: 'dashboard',       name: 'Spreadsheet Dashboard',  what: 'A CSV or Excel file, turned into charts.' }
+  ];
+
+  // ==================================================================
+  // BUILD THE PAGE: one heading per group, then a card for each app.
+  // Everything is made with textContent, so nothing in the list can ever
+  // run as code.
+  // ==================================================================
+  const list = document.getElementById('list');
+  const groups = [];
+  APPS.forEach(function (app) { if (!groups.includes(app.group)) groups.push(app.group); });
+
+  groups.forEach(function (group, index) {
+    const section = document.createElement('section');
+    section.setAttribute('aria-labelledby', 'group-' + index);
+
+    const heading = document.createElement('h2');
+    heading.id = 'group-' + index;
+    heading.textContent = group;
+
+    const ul = document.createElement('ul');
+    ul.className = 'apps';
+    APPS.filter(function (app) { return app.group === group; }).forEach(function (app) {
+      const li = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = app.folder + '/';          // a folder address: the browser opens its index.html
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = app.name;
+      const what = document.createElement('span');
+      what.className = 'what';
+      what.textContent = app.what;
+      link.append(name, what);
+      li.appendChild(link);
+      ul.appendChild(li);
+    });
+
+    section.append(heading, ul);
+    list.appendChild(section);
+  });
+</script>
+</body>
+</html>

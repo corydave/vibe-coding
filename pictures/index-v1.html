@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A page of my pictures</title>
+  <style>
+    :root {
+      --primary-color: #4a3f8f;
+      --page-bg: #f4f2fa;
+      --card-bg: #ffffff;
+      --text: #1e1b2e;
+      --border: #ddd8ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--page-bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 2rem 1rem 4rem;
+    }
+    .wrap { max-width: 34rem; margin: 0 auto; text-align: center; }
+    h1 { color: var(--primary-color); font-size: clamp(1.5rem, 5vw, 2.1rem); }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    /* Every photo is shown in the same box whatever shape the file is.
+       object-fit: cover crops the overflow instead of squashing the picture -
+       this is the line that stops the slider jumping about. */
+    .card img {
+      width: 100%;
+      height: 20rem;
+      object-fit: cover;
+      border-radius: 10px;
+      display: block;
+      background: #eee;
+    }
+
+    .controls { display: flex; gap: 1rem; justify-content: center; margin-top: 1.2rem; }
+    button {
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0.65rem 1.4rem;
+      border: 2px solid var(--primary-color);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--primary-color);
+    }
+    button:hover { background: var(--primary-color); color: #fff; }
+    button:focus-visible { outline: 3px solid #ff9800; outline-offset: 3px; }
+
+    .counter { margin-top: 0.8rem; color: #6b6585; font-size: 0.9rem; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>A page of my pictures</h1>
+    <p>One at a time. Use the buttons, or the left and right arrow keys.</p>
+
+    <!-- <figure> and <figcaption> are the semantic pair for "a picture and
+         the words that belong to it". aria-live announces the change when
+         someone moves between cards. -->
+    <figure class="card" aria-live="polite">
+      <img id="photo" src="" alt="">
+    </figure>
+
+    <div class="controls">
+      <button id="prev-button">&larr; Previous</button>
+      <button id="next-button">Next &rarr;</button>
+    </div>
+
+    <p class="counter" id="counter"></p>
+  </div>
+
+  <script>
+    // ==========================================================
+    // A page of my pictures
+    // v1.0 - initial build, five photos, no words
+    // ==========================================================
+
+    // The five picture files, in order. Nothing else - the captions came later.
+    const PICTURES = [
+      "photo-1.jpg",
+      "photo-2.jpg",
+      "photo-3.jpg",
+      "photo-4.jpg",
+      "photo-5.jpg"
+    ];
+
+    const photo      = document.getElementById("photo");
+    const counter    = document.getElementById("counter");
+    const prevButton = document.getElementById("prev-button");
+    const nextButton = document.getElementById("next-button");
+
+    // Which card is showing. Lists in JavaScript start at 0, not 1, so 0 is
+    // the first picture. This trips everyone up once and then never again.
+    let current = 0;
+
+    // ---- Put the current picture on the page ----
+    function show() {
+      photo.src = PICTURES[current];
+      photo.alt = "";
+
+      // Humans count from 1, so add one for display only.
+      counter.textContent = "Picture " + (current + 1) + " of " + PICTURES.length;
+    }
+
+    // ---- Move forward, wrapping round to the start ----
+    function next() {
+      // The % (remainder) trick: when current + 1 reaches the length of the
+      // list, the remainder is 0, so we land back on the first picture.
+      current = (current + 1) % PICTURES.length;
+      show();
+    }
+
+    // ---- Move back, wrapping round to the end ----
+    function previous() {
+      current = (current - 1 + PICTURES.length) % PICTURES.length;
+      show();
+    }
+
+    nextButton.addEventListener("click", next);
+    prevButton.addEventListener("click", previous);
+
+    // Arrow keys, because a slider you cannot drive from the keyboard is a
+    // slider half the room cannot use.
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowRight") next();
+      if (event.key === "ArrowLeft")  previous();
+    });
+
+    // Show the first picture as soon as the page opens.
+    show();
+  </script>
+</body>
+</html>

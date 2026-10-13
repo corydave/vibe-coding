@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found - Dave's Vibe Coding Apps</title>
+<!--
+  v1.0 - initial build: the page GitHub shows for any address on this site
+         that does not exist.
+
+  The link home uses the FULL address on purpose. This page can be shown in
+  place of any address on the site, however deep, so a short link like
+  "index.html" could end up pointing somewhere that does not exist either.
+-->
+<style>
+  /* Same colors as the hub page, so this still feels like the same site. */
+  :root { --ink: #1d2433; --muted: #5b6475; --paper: #f6f3ee; --accent: #264653; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: grid; place-items: center;
+    padding: 24px 16px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink); background: var(--paper);
+    text-align: center; line-height: 1.55;
+  }
+  .big { font-size: clamp(4rem, 18vw, 8rem); margin: 0; line-height: 1; }
+  h1 { margin: 12px 0 8px; font-size: clamp(1.5rem, 5vw, 2.2rem); }
+  p { color: var(--muted); max-width: 40ch; margin: 0 auto 28px; }
+  a.home {
+    display: inline-block; padding: 14px 26px; border-radius: 12px;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 1.15rem;
+    text-decoration: none;
+  }
+  a.home:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="big" aria-hidden="true">🧭</p>
+  <h1>There's nothing at this address.</h1>
+  <p>Maybe a typo, maybe a page that moved. Either way, every app on this site is one click away.</p>
+  <a class="home" href="https://corydave.github.io/vibe-coding/">Take me to the home page</a>
+</main>
+</body>
+</html>

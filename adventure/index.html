@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<!--
+  Locked In: A Library Adventure
+  v1.0 - example build for Vibe Coding lab 4.6 (Apps worth sharing)
+
+  A choose-your-own-adventure in the "classic text adventure" look:
+  green text on black, like a computer from 1980. Every scene - its words
+  and its choices - lives in ONE list at the top of the script (STORY), so
+  the story can be changed without touching anything else.
+
+  Controls: click a choice, or press its number key (1, 2, 3).
+  Privacy: nothing leaves this page, and nothing is saved.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Locked In: A Library Adventure</title>
+  <style>
+    /* -------------------------------------------------------------
+       THE LOOK - an old green-screen terminal
+       ------------------------------------------------------------- */
+    :root {
+      --screen: #0b0f0b;
+      --green:  #5cff7a;   /* bright phosphor green (about 14:1 on black) */
+      --dim:    #3fbf57;
+      --amber:  #ffcf5c;   /* for endings */
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #000;
+      color: var(--green);
+      font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+      font-size: clamp(1rem, 2.6vw, 1.15rem);
+      line-height: 1.6;
+      display: flex;
+      justify-content: center;
+      padding: 1.5rem 1rem 3rem;
+    }
+
+    /* The screen: a slightly rounded box with a soft glow. */
+    .screen {
+      width: min(100%, 720px);
+      background: var(--screen);
+      border: 2px solid #1d3a22;
+      border-radius: 14px;
+      padding: clamp(1rem, 4vw, 2rem);
+      box-shadow: 0 0 40px rgba(92, 255, 122, 0.12), inset 0 0 60px rgba(92, 255, 122, 0.05);
+      text-shadow: 0 0 6px rgba(92, 255, 122, 0.45);
+    }
+
+    .title { margin: 0 0 1rem; font-size: 1em; color: var(--dim); letter-spacing: 0.1em; }
+
+    /* The scene heading gets keyboard focus on every new scene, so a
+       screen reader user hears where they are - but it needs no ring. */
+    h1 { margin: 0 0 0.75rem; font-size: 1.25em; text-transform: uppercase; letter-spacing: 0.08em; }
+    h1:focus { outline: none; }
+
+    .text p { margin: 0 0 1em; white-space: pre-line; }
+
+    .inventory { color: var(--dim); margin: 0 0 1rem; min-height: 1.6em; }
+
+    /* The choices: big, numbered, easy to hit with a thumb. */
+    ol { list-style: none; margin: 1.25rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+    button {
+      width: 100%;
+      text-align: left;
+      font: inherit;
+      color: var(--green);
+      background: transparent;
+      border: 1px solid var(--dim);
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      cursor: pointer;
+      text-shadow: inherit;
+    }
+    button:hover { background: rgba(92, 255, 122, 0.08); }
+    button:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+    .num { color: var(--amber); margin-right: 0.6rem; }
+
+    .ending h1 { color: var(--amber); }
+    .locked { color: var(--dim); font-style: italic; margin: 0.5rem 0 0; }
+
+    /* The blinking cursor after the text. Still for people who ask for less motion. */
+    .cursor { display: inline-block; width: 0.6em; background: var(--green); animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+  </style>
+</head>
+<body>
+  <main class="screen" id="screen">
+    <p class="title">LOCKED IN :: A LIBRARY ADVENTURE</p>
+    <h1 id="scene-title" tabindex="-1"></h1>
+    <div class="text" id="scene-text"></div>
+    <p class="inventory" id="inventory" aria-live="polite"></p>
+    <ol id="choices"></ol>
+    <p class="locked" id="locked" aria-live="polite"></p>
+  </main>
+
+  <script>
+    // v1.0 - initial build
+
+    // =============================================================
+    // THE STORY - every scene, its words, and its choices, in one
+    // place. To change the story, change this and nothing else.
+    //
+    //   title:   shown at the top of the scene
+    //   text:    the story (a blank line starts a new paragraph)
+    //   gives:   (optional) an item you pick up when you arrive
+    //   ending:  (optional) "good" or "bad" - an ending has no choices
+    //   choices: each one has the words on the button, the name of
+    //            the scene it leads to, and (optionally) an item you
+    //            need before it will open
+    // =============================================================
+    const STORY = {
+      start: {
+        title: "The Stacks, 11:52 PM",
+        text: "You wake up face-down on a chemistry textbook. The library is dark. Every light is off except the red EXIT sign, and the sign is lying.\n\nYour phone says 3%.",
+        choices: [
+          { label: "Look for a way out", to: "lobby" },
+          { label: "Search the help desk", to: "desk" },
+          { label: "Go back to sleep. Problems are for morning-you.", to: "sleep" }
+        ]
+      },
+
+      desk: {
+        title: "The Help Desk",
+        text: "The drawer is not locked. Inside: a brass key on a tag that says ROOF, and half a granola bar with a sticky note on it.\n\nThe note says: MINE. - M.",
+        gives: "brass key",
+        choices: [
+          { label: "Pocket the key and head for the lobby", to: "lobby" },
+          { label: "Eat the granola bar", to: "granola" }
+        ]
+      },
+
+      lobby: {
+        title: "The Lobby",
+        text: "The front doors are chained shut. To your left, a door marked ROOF ACCESS.\n\nBehind you, a cart of returned books rolls slowly across the carpet. Nobody is pushing it.",
+        choices: [
+          { label: "Try the roof door", to: "stairs", needs: "brass key" },
+          { label: "Follow the cart", to: "archive" },
+          { label: "Sit by the front doors and wait for morning", to: "wait" }
+        ]
+      },
+
+      stairs: {
+        title: "The Roof Stairs",
+        text: "The brass key turns. Forty-one stairs later, a heavy door opens onto cold night air and the whole campus spread out below you.\n\nYour phone finds one bar of signal.",
+        choices: [
+          { label: "Call a friend", to: "rescue" },
+          { label: "Take a picture first. Priorities.", to: "rescue" }
+        ]
+      },
+
+      archive: {
+        title: "The Archive",
+        text: "The cart stops at a desk you have never seen before. Behind it sits a librarian in a cardigan older than the building. She is slightly see-through.\n\n\"You have an overdue book,\" she whispers. \"It has been overdue since 1987.\"",
+        choices: [
+          { label: "Apologize and return the book in your bag", to: "sidedoor" },
+          { label: "Argue that you were not born in 1987", to: "banned" }
+        ]
+      },
+
+      // ---------------- endings ----------------
+      sleep: {
+        title: "THE END",
+        ending: "bad",
+        text: "You wake up at 7 AM to a custodian holding a mop and a very long silence.\n\nYou are on the library's social media. Forty-two likes."
+      },
+      granola: {
+        title: "THE END",
+        ending: "bad",
+        text: "It was stale. It was also M's.\n\nSomewhere in the dark, a voice says: M will remember that."
+      },
+      wait: {
+        title: "THE END",
+        ending: "bad",
+        text: "The cart rolls past you nine more times before sunrise. You do not sleep. You will never return a book late again."
+      },
+      banned: {
+        title: "THE END",
+        ending: "bad",
+        text: "\"Banned,\" she says, and stamps your hand. You are now banned, forever, from a library that is not technically real."
+      },
+      sidedoor: {
+        title: "THE END",
+        ending: "good",
+        text: "She stamps the book RETURNED and smiles. A door you swear was not there a second ago swings open onto the parking lot.\n\nYour fine: zero dollars. Her advice: \"Read the chemistry.\""
+      },
+      rescue: {
+        title: "THE END",
+        ending: "good",
+        text: "Twenty minutes later, a friend is waving at you from the parking lot with a flashlight and a large coffee.\n\nYou are free. Also, that was a very good view."
+      }
+    };
+
+    // Where the story begins.
+    const FIRST_SCENE = "start";
+
+    // =============================================================
+    // THE ENGINE - shows one scene at a time. You do not need to
+    // change anything below here to change the story.
+    // =============================================================
+    const titleEl     = document.getElementById("scene-title");
+    const textEl      = document.getElementById("scene-text");
+    const inventoryEl = document.getElementById("inventory");
+    const choicesEl   = document.getElementById("choices");
+    const lockedEl    = document.getElementById("locked");
+    const screen      = document.getElementById("screen");
+
+    // The things you are carrying. A Set is a list that never holds the
+    // same thing twice.
+    let items = new Set();
+
+    function show(sceneName) {
+      const scene = STORY[sceneName];
+
+      // A choice that points at a scene name with a typo would otherwise
+      // show a blank screen. Say what went wrong instead.
+      if (!scene) {
+        titleEl.textContent = "Missing scene";
+        textEl.textContent = "There is no scene called \"" + sceneName + "\" in the story. Check the spelling in STORY.";
+        choicesEl.textContent = "";
+        return;
+      }
+
+      // Pick up anything this scene gives you.
+      if (scene.gives) items.add(scene.gives);
+
+      screen.classList.toggle("ending", Boolean(scene.ending));
+      titleEl.textContent = scene.title;
+      lockedEl.textContent = "";
+
+      // The story text: each blank line in the text starts a new paragraph.
+      // textContent keeps it as plain words.
+      textEl.textContent = "";
+      scene.text.split("\n\n").forEach(function (para, i, all) {
+        const p = document.createElement("p");
+        p.textContent = para;
+        if (i === all.length - 1) {                 // a blinking cursor on the last line
+          const cursor = document.createElement("span");
+          cursor.className = "cursor";
+          cursor.setAttribute("aria-hidden", "true");
+          cursor.textContent = " ";
+          p.appendChild(document.createTextNode(" "));
+          p.appendChild(cursor);
+        }
+        textEl.appendChild(p);
+      });
+
+      inventoryEl.textContent = items.size ? "You are carrying: " + Array.from(items).join(", ") : "";
+
+      // The choices - or, at an ending, a single Play again.
+      choicesEl.textContent = "";
+      const choices = scene.ending
+        ? [{ label: scene.ending === "good" ? "Play again (you won!)" : "Play again", to: FIRST_SCENE, restart: true }]
+        : scene.choices;
+
+      choices.forEach(function (choice, i) {
+        const li = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+
+        const num = document.createElement("span");
+        num.className = "num";
+        num.textContent = (i + 1) + ".";
+        num.setAttribute("aria-hidden", "true");
+        button.appendChild(num);
+        button.appendChild(document.createTextNode(choice.label));
+
+        button.addEventListener("click", function () { choose(choice); });
+        li.appendChild(button);
+        choicesEl.appendChild(li);
+      });
+
+      // Move keyboard (and screen reader) focus to the new scene's title.
+      titleEl.focus();
+      window.scrollTo({ top: 0 });
+    }
+
+    function choose(choice) {
+      // A choice that needs an item you do not have stays put, and says why.
+      if (choice.needs && !items.has(choice.needs)) {
+        lockedEl.textContent = "It's locked. Maybe something around here opens it.";
+        return;
+      }
+      if (choice.restart) items = new Set();       // new game, empty pockets
+      show(choice.to);
+    }
+
+    // Number keys 1, 2, 3... press the matching choice.
+    document.addEventListener("keydown", function (event) {
+      const n = parseInt(event.key, 10);
+      const buttons = choicesEl.querySelectorAll("button");
+      if (n >= 1 && n <= buttons.length) buttons[n - 1].click();
+    });
+
+    show(FIRST_SCENE);
+  </script>
+</body>
+</html>

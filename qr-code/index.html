@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Code Generator</title>
+
+  <!-- This library draws the actual QR code. It is loaded from a CDN, which is
+       another computer on the internet. That is why this page needs a
+       connection to work, even though the file is on your own machine. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    /* ---- Colours and sizes in one place, so they are easy to change ---- */
+    :root {
+      --primary-color: #2b5797;   /* the page's main colour */
+      --page-bg:       #f7f7f9;
+      --card-bg:       #ffffff;
+      --text:          #1a1a1a;
+      --border:        #d5d5dd;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--page-bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 1.5rem 1rem 3rem;
+    }
+
+    /* max-width keeps the layout readable on a big screen; the percentage
+       width lets it shrink on a phone. That is most of "responsive". */
+    .card {
+      max-width: 34rem;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    h1 { color: var(--primary-color); margin-top: 0; font-size: 1.6rem; }
+
+    label { display: block; font-weight: 600; margin: 1rem 0 0.35rem; }
+
+    input[type="text"], input[type="color"] {
+      width: 100%;
+      padding: 0.6rem;
+      font-size: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+    }
+    input[type="color"] { height: 3rem; padding: 0.25rem; }
+
+    /* A hint line under an input. aria-describedby ties it to the input so a
+       screen reader announces it as part of the field. */
+    .hint { font-size: 0.85rem; color: #555; margin: 0.3rem 0 0; }
+
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .row > div { flex: 1 1 12rem; }
+
+    button {
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0.7rem 1.2rem;
+      margin-top: 1.2rem;
+      border: none;
+      border-radius: 8px;
+      background: var(--primary-color);
+      color: #fff;
+    }
+    button:hover { filter: brightness(1.1); }
+
+    /* NEVER remove the focus ring without replacing it. This is the only way a
+       keyboard user can see where they are on the page. */
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid #ff9800;
+      outline-offset: 2px;
+    }
+
+    #output { text-align: center; margin-top: 1.5rem; }
+    #output canvas, #output img { max-width: 100%; height: auto; }
+
+    .secondary { background: #555; }
+  </style>
+</head>
+
+<body>
+  <main class="card">
+    <h1>QR Code Generator</h1>
+    <p>Type anything - a web address, a message, a phone number - and get a QR code for it.</p>
+
+    <!-- A real <label> tied to the input by for/id. Placeholder text is not a
+         label; a screen reader would have nothing to announce without this. -->
+    <label for="text-input">What should the code point to?</label>
+    <input
+      type="text"
+      id="text-input"
+      value="https://www.daveghidiu.com"
+      aria-describedby="text-hint">
+    <p class="hint" id="text-hint">A link, or just words. Both work.</p>
+
+    <div class="row">
+      <div>
+        <label for="color-input">Code colour</label>
+        <input type="color" id="color-input" value="#2b5797">
+      </div>
+      <div>
+        <label for="initials-input">Initials in the middle</label>
+        <input
+          type="text"
+          id="initials-input"
+          value="DG"
+          maxlength="3"
+          aria-describedby="initials-hint">
+        <p class="hint" id="initials-hint">Up to three letters. Leave empty for none.</p>
+      </div>
+    </div>
+
+    <button id="make-button">Make the code</button>
+    <button id="save-button" class="secondary">Save as a picture</button>
+
+    <!-- The finished code is drawn in here.
+         aria-live="polite" means a screen reader announces when it changes. -->
+    <div id="output" aria-live="polite"></div>
+  </main>
+
+  <script>
+    // ==========================================================
+    // QR Code Generator
+    // v1.2 - show the canvas we drew on, not the library's copy
+    // v1.1 - added colour and centre initials
+    // v1.0 - initial build
+    // ==========================================================
+
+    // ---- Grab the pieces of the page we need to talk to ----
+    // getElementById finds one element by its id attribute.
+    const textInput     = document.getElementById("text-input");
+    const colorInput    = document.getElementById("color-input");
+    const initialsInput = document.getElementById("initials-input");
+    const makeButton    = document.getElementById("make-button");
+    const saveButton    = document.getElementById("save-button");
+    const output        = document.getElementById("output");
+
+    // ---- Draw the QR code ----
+    function makeCode() {
+      // Start from an empty box each time, so codes don't stack up.
+      output.innerHTML = "";
+
+      const text = textInput.value.trim();
+      if (text === "") {
+        output.textContent = "Type something first.";
+        return;
+      }
+
+      // The library draws into whatever element we hand it.
+      // correctLevel H is the strongest error correction: roughly a third of
+      // the code can be damaged or covered and it still scans. That is what
+      // lets us put initials right in the middle of it.
+      new QRCode(output, {
+        text: text,
+        width: 300,
+        height: 300,
+        colorDark: colorInput.value,
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+
+      // The library needs a moment to finish drawing before we add initials.
+      setTimeout(addInitials, 60);
+    }
+
+    // ---- Put the initials in the centre of the finished code ----
+    function addInitials() {
+      const canvas = output.querySelector("canvas");
+      const initials = initialsInput.value.trim().toUpperCase();
+
+      // No canvas (older browsers) or no initials means there is nothing to do.
+      if (!canvas || initials === "") return;
+
+      // A "context" is the thing you actually draw with.
+      const pen = canvas.getContext("2d");
+      const middle = canvas.width / 2;
+      const boxSize = canvas.width * 0.22;   // white square behind the letters
+
+      // White square first, so the letters sit on a clean background.
+      pen.fillStyle = "#ffffff";
+      pen.fillRect(middle - boxSize / 2, middle - boxSize / 2, boxSize, boxSize);
+
+      // Then the letters, in the same colour as the code.
+      pen.fillStyle = colorInput.value;
+      pen.font = "bold " + Math.round(boxSize * 0.5) + "px system-ui, sans-serif";
+      pen.textAlign = "center";
+      pen.textBaseline = "middle";
+      pen.fillText(initials, middle, middle);
+
+      // The library ALSO makes a plain <img> copy of the code, and on most
+      // browsers it shows that image and hides the canvas. Our initials were
+      // just drawn on the canvas, so if we left things as they are, the
+      // visible picture would be the one WITHOUT them.
+      // So: show the canvas we drew on, and hide the library's image.
+      canvas.style.display = "block";
+      const img = output.querySelector("img");
+      if (img) img.style.display = "none";
+    }
+
+    // ---- Save whatever is on screen as a .png file ----
+    function saveCode() {
+      const canvas = output.querySelector("canvas");
+      if (!canvas) {
+        alert("Make a code first.");
+        return;
+      }
+
+      // toDataURL turns the drawing into a very long piece of text that a
+      // browser understands as a picture. A link with a "download" attribute
+      // then saves it instead of opening it. We read from the canvas, so the
+      // saved file has the initials on it.
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = "qr-code.png";
+      link.click();
+    }
+
+    // ---- Listen for things the person does ----
+    makeButton.addEventListener("click", makeCode);
+    saveButton.addEventListener("click", saveCode);
+
+    // Pressing Enter in the text box should do the obvious thing.
+    textInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") makeCode();
+    });
+
+    // ---- Draw one straight away so the page isn't empty on arrival ----
+    makeCode();
+  </script>
+</body>
+</html>

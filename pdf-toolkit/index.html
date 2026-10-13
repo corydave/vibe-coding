@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Toolkit</title>
+
+<!--
+  ==========================================================================
+  LIBRARIES THIS PAGE BORROWS
+  ==========================================================================
+  1. pdf-lib, version 1.17.1
+     Where from:  jsDelivr (a major CDN), copied from the official npm package
+     What it does: opens PDF files, copies their pages into a new PDF, and
+                   writes text onto pages. Everything named PDFLib below
+                   comes from it.
+  ==========================================================================
+
+  v1.0 - initial build: choose or drop PDFs, reorder or remove them, stamp
+         text in the corner of every page, merge, and download.
+-->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+<style>
+  /* ---------- Colors, fonts, page width ---------- */
+  :root {
+    --ink: #1d2433;
+    --muted: #5b6475;
+    --paper: #ffffff;
+    --soft: #eef2f7;
+    --line: #cfd6e2;
+    --accent: #1f5f8b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--soft);
+    line-height: 1.5;
+  }
+  main {
+    max-width: 720px;
+    margin: 24px auto;
+    padding: 24px 16px;
+    background: var(--paper);
+    border-radius: 14px;
+  }
+  h1 { margin-top: 0; }
+  .privacy { color: var(--muted); }
+
+  /* ---------- The drop zone ---------- */
+  .drop {
+    border: 2px dashed var(--line);
+    border-radius: 12px;
+    padding: 28px 16px;
+    text-align: center;
+  }
+  .drop.over { border-color: var(--accent); background: var(--soft); }
+
+  /* ---------- Buttons ---------- */
+  button, .file-label {
+    font: inherit;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: var(--paper);
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .primary { background: var(--accent); color: #fff; font-size: 1.1rem; padding: 10px 20px; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  /* A clear outline for keyboard users. */
+  button:focus-visible, input:focus-visible, .file-label:focus-within {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+  }
+  /* The real file input is visually hidden but still reachable by keyboard
+     and screen readers; the styled label is what people see. */
+  .file-label input {
+    position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden;
+  }
+
+  /* ---------- The list of files ---------- */
+  ol#files { padding-left: 1.4rem; }
+  ol#files li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .name { flex: 1 1 220px; overflow-wrap: anywhere; }
+  .pages { color: var(--muted); }
+  .empty { color: var(--muted); font-style: italic; }
+
+  label[for="stamp"] { display: block; font-weight: 600; margin-top: 18px; }
+  input[type="text"] {
+    font: inherit; width: 100%; padding: 8px 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  #status { min-height: 1.5em; font-weight: 600; }
+  #download { display: inline-block; margin-top: 8px; font-weight: 700; }
+  /* "display" above would otherwise beat the hidden attribute and show the
+     link before there is anything to download. */
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PDF Toolkit</h1>
+  <p class="privacy">Your files never leave this computer. Everything happens right here in your browser.</p>
+
+  <!-- STEP 1: choose files. The label wraps a real file input, so it works
+       with a click, the keyboard, or by dragging files onto the dashed box. -->
+  <div class="drop" id="drop">
+    <p>Drag PDF files here, or</p>
+    <label class="file-label">
+      Choose PDF files
+      <input type="file" id="picker" accept="application/pdf,.pdf" multiple>
+    </label>
+  </div>
+
+  <!-- STEP 2: the files, in the order they will be merged. -->
+  <h2>Files, in order</h2>
+  <ol id="files"></ol>
+  <p id="empty" class="empty">No files yet.</p>
+
+  <!-- STEP 3: the stamp. -->
+  <label for="stamp">Stamp for the bottom corner of every page (optional)</label>
+  <input type="text" id="stamp" placeholder="For example: DRAFT" maxlength="60">
+
+  <!-- STEP 4: merge. -->
+  <p><button id="merge" class="primary" disabled>Merge and download</button></p>
+  <p id="status" role="status" aria-live="polite"></p>
+  <a id="download" hidden>Download your merged PDF</a>
+</main>
+
+<script>
+  // ==================================================================
+  // THE LIST OF FILES
+  // Each entry remembers the file's name, its bytes, and its page count.
+  // The order of this array IS the order the PDFs get merged in.
+  // ==================================================================
+  let files = [];
+
+  const picker   = document.getElementById('picker');
+  const drop     = document.getElementById('drop');
+  const list     = document.getElementById('files');
+  const empty    = document.getElementById('empty');
+  const merge    = document.getElementById('merge');
+  const stamp    = document.getElementById('stamp');
+  const status   = document.getElementById('status');
+  const download = document.getElementById('download');
+
+  // Show a message, and have screen readers announce it.
+  function say(message) { status.textContent = message; }
+
+  // ------------------------------------------------------------------
+  // ADDING FILES
+  // Read each PDF into memory and ask pdf-lib how many pages it has.
+  // Nothing is uploaded anywhere: file.arrayBuffer() reads it locally.
+  // ------------------------------------------------------------------
+  async function addFiles(fileList) {
+    for (const file of fileList) {
+      // Skip anything that is not a PDF.
+      if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+        say(file.name + ' is not a PDF, so it was skipped.');
+        continue;
+      }
+      try {
+        const bytes = await file.arrayBuffer();
+        // ignoreEncryption lets pdf-lib try to open PDFs that are marked as protected.
+        const pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+        files.push({ name: file.name, bytes: bytes, pages: pdf.getPageCount() });
+        say('Added ' + file.name + '.');
+      } catch (error) {
+        console.error(error);
+        say('Could not open ' + file.name + '. It may be damaged or password-protected.');
+      }
+    }
+    showList();
+  }
+
+  // ------------------------------------------------------------------
+  // SHOWING THE LIST
+  // Rebuild the list on screen from the files array, with move-up,
+  // move-down and remove buttons for each file.
+  // ------------------------------------------------------------------
+  function showList() {
+    list.innerHTML = '';
+    files.forEach(function (entry, index) {
+      const item = document.createElement('li');
+
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = entry.name;    // textContent, never innerHTML, for file names
+
+      const pages = document.createElement('span');
+      pages.className = 'pages';
+      pages.textContent = entry.pages + (entry.pages === 1 ? ' page' : ' pages');
+
+      // Each button's aria-label says WHICH file it acts on, because three
+      // buttons that all just say "Up" would be confusing with a screen reader.
+      const up = makeButton('Up', 'Move ' + entry.name + ' up', index === 0, function () { move(index, -1); });
+      const down = makeButton('Down', 'Move ' + entry.name + ' down', index === files.length - 1, function () { move(index, 1); });
+      const remove = makeButton('Remove', 'Remove ' + entry.name, false, function () {
+        files.splice(index, 1);
+        say('Removed ' + entry.name + '.');
+        showList();
+      });
+
+      item.append(name, pages, up, down, remove);
+      list.appendChild(item);
+    });
+    empty.hidden = files.length > 0;     // the "No files yet" line
+    merge.disabled = files.length === 0; // nothing to merge yet
+  }
+
+  // A small helper that builds one button.
+  function makeButton(text, label, disabled, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = text;
+    button.setAttribute('aria-label', label);
+    button.disabled = disabled;
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  // Swap a file with its neighbor above (-1) or below (+1).
+  function move(index, direction) {
+    const target = index + direction;
+    [files[index], files[target]] = [files[target], files[index]];
+    say('Moved ' + files[target].name + (direction < 0 ? ' up.' : ' down.'));
+    showList();
+  }
+
+  // ------------------------------------------------------------------
+  // MERGING
+  // Make a brand new empty PDF, copy every page of every file into it in
+  // order, write the stamp on each page, then offer it as a download.
+  // ------------------------------------------------------------------
+  async function mergeAll() {
+    say('Merging...');
+    download.hidden = true;
+    try {
+      const merged = await PDFLib.PDFDocument.create();
+      const font = await merged.embedFont(PDFLib.StandardFonts.Helvetica);
+      const stampText = stamp.value.trim();
+
+      for (const entry of files) {
+        const source = await PDFLib.PDFDocument.load(entry.bytes, { ignoreEncryption: true });
+        const copied = await merged.copyPages(source, source.getPageIndices());
+        copied.forEach(function (page) { merged.addPage(page); });
+      }
+
+      // Stamp every page: small dark gray letters, half an inch (36 points)
+      // in from the bottom left corner.
+      if (stampText) {
+        merged.getPages().forEach(function (page) {
+          page.drawText(stampText, {
+            x: 36, y: 36, size: 12, font: font,
+            color: PDFLib.rgb(0.3, 0.3, 0.3)
+          });
+        });
+      }
+
+      // Turn the finished PDF into a file the browser can download.
+      const bytes = await merged.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      if (download.href) URL.revokeObjectURL(download.href);   // tidy up the last one
+      download.href = URL.createObjectURL(blob);
+      download.download = 'merged.pdf';
+      download.hidden = false;
+      download.click();     // start the download straight away
+      say('Done: ' + merged.getPageCount() + ' pages merged. If the download did not start, use the link below.');
+    } catch (error) {
+      console.error(error);
+      say('Something went wrong while merging. Open the Developer Console for details.');
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // WIRING IT UP
+  // ------------------------------------------------------------------
+  picker.addEventListener('change', function () {
+    // Copy the chosen files into a normal list FIRST. Clearing the picker
+    // (next line) empties picker.files, and addFiles is still reading it.
+    addFiles(Array.from(picker.files));
+    picker.value = '';      // so choosing the same file again still works
+  });
+
+  // Drag and drop: stop the browser opening the PDF itself, then add it.
+  drop.addEventListener('dragover', function (event) { event.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+  drop.addEventListener('drop', function (event) {
+    event.preventDefault();
+    drop.classList.remove('over');
+    addFiles(Array.from(event.dataTransfer.files));
+  });
+
+  merge.addEventListener('click', mergeAll);
+
+  // If the library never arrived (no internet, or a bad address), say so
+  // on the page instead of failing silently.
+  if (typeof PDFLib === 'undefined') {
+    say('The PDF library did not load. Check your internet connection and refresh.');
+    picker.disabled = true;
+  }
+  showList();
+</script>
+</body>
+</html>

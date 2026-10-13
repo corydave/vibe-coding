@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Googly Eyes</title>
+
+<!--
+  ==========================================================================
+  LIBRARIES THIS PAGE BORROWS
+  ==========================================================================
+  1. MediaPipe Tasks Vision (Face Landmarker), version 1.1.0, by Google
+     It arrives as THREE downloads, from TWO places:
+       a. The library (the code this page talks to)
+          from jsDelivr: @mediapipe/tasks-vision@1.1.0/vision_bundle.mjs
+       b. The engine (a "wasm" folder that does the heavy lifting)
+          from jsDelivr: @mediapipe/tasks-vision@1.1.0/wasm
+          PINNED TO THE SAME VERSION AS THE LIBRARY. The two halves must match.
+       c. The model (the part that has learned what a face looks like)
+          from Google's own storage: storage.googleapis.com
+     What it does: finds 478 points on a face in each camera frame - including
+     the corners of the eyes, which is all this page needs.
+
+  PRIVACY: the camera picture is processed right here in the browser. It is
+  never sent anywhere. The model comes DOWN once; your face never goes UP.
+  ==========================================================================
+
+  v1.0 - initial build: start/stop camera, mirror view, googly eyes that
+         follow your face, wobbling pupils, "Looking for a face..." message.
+-->
+
+<style>
+  /* ---------- Page ---------- */
+  :root { --ink: #1d2433; --paper: #fdf6ec; --accent: #7b2cbf; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { margin: 6px 0; }
+  .privacy { margin-top: 0; color: #555; }
+
+  /* ---------- Buttons ---------- */
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  button {
+    font: inherit; font-weight: 700;
+    padding: 10px 18px; border: 0; border-radius: 10px;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+  /* ---------- The picture ----------
+     The video element is hidden; everything you see is drawn onto the
+     canvas, so the eyes and the video always line up exactly. */
+  .stage {
+    position: relative; width: 100%; aspect-ratio: 4 / 3;
+    background: #222; border-radius: 14px; overflow: hidden;
+  }
+  canvas { width: 100%; height: 100%; display: block; }
+  video { display: none; }
+  #status { font-weight: 700; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Googly Eyes</h1>
+  <p class="privacy">Your camera picture never leaves this computer. All the face-finding happens right here in your browser.</p>
+
+  <div class="controls">
+    <button id="start">Start camera</button>
+    <button id="stop" disabled>Stop camera</button>
+  </div>
+
+  <p id="status" role="status" aria-live="polite">Press Start camera to begin.</p>
+
+  <div class="stage">
+    <canvas id="canvas" width="640" height="480" role="img"
+            aria-label="Your camera picture, mirrored, with big googly eyes drawn over your eyes."></canvas>
+  </div>
+  <video id="video" playsinline muted></video>
+</main>
+
+<script type="module">
+  // Borrow the two pieces of MediaPipe we need, from the pinned library.
+  import { FilesetResolver, FaceLandmarker } from
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/vision_bundle.mjs';
+
+  // ==================================================================
+  // ADDRESSES - the engine uses the SAME version number as the library.
+  // ==================================================================
+  const ENGINE_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/wasm';
+  const MODEL_URL  = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+
+  // ==================================================================
+  // GOOGLY EYE SETTINGS - change these to change the look and feel
+  // ==================================================================
+  const EYE_SCALE = 1.5;     // how big the googly eye is, compared with the real eye
+  const PUPIL_SIZE = 0.45;   // pupil size, as a share of the googly eye
+  const GRAVITY = 0.9;       // how hard the pupils fall downward
+  const WOBBLE = 0.88;       // 1 = wobbles forever, smaller = settles faster
+  const BOUNCE = 0.6;        // how much a pupil bounces off the edge
+
+  // The numbers of the face points at each eye's two corners.
+  // (MediaPipe numbers 478 points on a face; these four are the eye corners.)
+  const EYES = [
+    { corners: [33, 133] },    // one eye
+    { corners: [362, 263] }    // the other eye
+  ];
+  // Each eye's pupil remembers where it is and how fast it is moving.
+  EYES.forEach(function (eye) { eye.pupil = null; eye.speedX = 0; eye.speedY = 0; });
+
+  const startButton = document.getElementById('start');
+  const stopButton = document.getElementById('stop');
+  const status = document.getElementById('status');
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  let landmarker = null;   // the face tracker, created the first time you press Start
+  let stream = null;       // the camera
+  let running = false;
+  let lastVideoTime = -1;
+
+  function say(message) { if (status.textContent !== message) status.textContent = message; }
+
+  // ------------------------------------------------------------------
+  // LOADING THE FACE TRACKER
+  // Only happens once, the first time Start is pressed, so the page
+  // itself opens instantly. Tries the graphics chip first (faster) and
+  // falls back to the main processor if that is not available.
+  // ------------------------------------------------------------------
+  async function loadTracker() {
+    say('Loading the face tracker... (the first time takes a few seconds)');
+    const engine = await FilesetResolver.forVisionTasks(ENGINE_URL);
+    for (const delegate of ['GPU', 'CPU']) {
+      try {
+        return await FaceLandmarker.createFromOptions(engine, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: delegate },
+          runningMode: 'VIDEO',
+          numFaces: 1
+        });
+      } catch (error) {
+        console.warn('Face tracker could not start with ' + delegate + ':', error);
+      }
+    }
+    throw new Error('The face tracker could not start.');
+  }
+
+  // ------------------------------------------------------------------
+  // START AND STOP
+  // ------------------------------------------------------------------
+  async function start() {
+    startButton.disabled = true;
+    try {
+      if (!landmarker) landmarker = await loadTracker();
+      say('Asking to use your camera...');
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+      video.srcObject = stream;
+      await video.play();
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      running = true;
+      stopButton.disabled = false;
+      stopButton.focus();
+      say('Looking for a face...');
+      requestAnimationFrame(frame);
+    } catch (error) {
+      console.error(error);
+      startButton.disabled = false;
+      if (error.name === 'NotAllowedError') {
+        say('The camera is blocked. Click the camera icon in the address bar and choose Allow.');
+      } else if (error.name === 'NotFoundError') {
+        say('No camera was found on this device.');
+      } else {
+        say('Something went wrong starting up. Open the Developer Console for details.');
+      }
+    }
+  }
+
+  function stop() {
+    running = false;
+    if (stream) stream.getTracks().forEach(function (track) { track.stop(); });   // turns the camera light off
+    stream = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    stopButton.disabled = true;
+    startButton.disabled = false;
+    startButton.focus();
+    say('Camera off.');
+  }
+
+  // ------------------------------------------------------------------
+  // EVERY FRAME: draw the camera like a mirror, find the face, draw eyes.
+  // ------------------------------------------------------------------
+  function frame() {
+    if (!running) return;
+    const w = canvas.width, h = canvas.height;
+
+    // Mirror: flip left-to-right, draw the video, flip back.
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, w, h);
+    ctx.restore();
+
+    // Only ask MediaPipe about frames it has not seen yet.
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      const result = landmarker.detectForVideo(video, performance.now());
+      const face = result.faceLandmarks && result.faceLandmarks[0];
+      if (face) {
+        say('');
+        EYES.forEach(function (eye) { drawGooglyEye(eye, face, w, h); });
+      } else {
+        say('Looking for a face...');
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ------------------------------------------------------------------
+  // ONE GOOGLY EYE
+  // MediaPipe gives each point as a fraction of the picture (0 to 1).
+  // Because the picture is mirrored, x is flipped too: (1 - x).
+  // ------------------------------------------------------------------
+  function drawGooglyEye(eye, face, w, h) {
+    const a = face[eye.corners[0]], b = face[eye.corners[1]];
+    const ax = (1 - a.x) * w, ay = a.y * h;
+    const bx = (1 - b.x) * w, by = b.y * h;
+
+    const centerX = (ax + bx) / 2, centerY = (ay + by) / 2;
+    const radius = Math.hypot(bx - ax, by - ay) / 2 * EYE_SCALE * 1.4;
+    const pupilRadius = radius * PUPIL_SIZE;
+    const room = radius - pupilRadius;      // how far a pupil can roam from the center
+
+    // First frame: start the pupil hanging at the bottom.
+    if (!eye.pupil) eye.pupil = { x: centerX, y: centerY + room };
+
+    // THE WOBBLE. The pupil does not move with the eye - it has its own
+    // speed. Gravity pulls it down, it slowly loses speed, and when the eye
+    // moves, the pupil is left behind and swings back. That is all a real
+    // googly eye is doing.
+    eye.speedY += GRAVITY;
+    eye.speedX *= WOBBLE;
+    eye.speedY *= WOBBLE;
+    eye.pupil.x += eye.speedX;
+    eye.pupil.y += eye.speedY;
+
+    // Keep the pupil inside the eye: if it went past the edge, put it back
+    // on the edge and bounce it.
+    const dx = eye.pupil.x - centerX, dy = eye.pupil.y - centerY;
+    const distance = Math.hypot(dx, dy);
+    if (distance > room) {
+      const nx = dx / distance, ny = dy / distance;          // direction from center to pupil
+      eye.pupil.x = centerX + nx * room;
+      eye.pupil.y = centerY + ny * room;
+      const along = eye.speedX * nx + eye.speedY * ny;        // speed heading out through the edge
+      eye.speedX -= (1 + BOUNCE) * along * nx;
+      eye.speedY -= (1 + BOUNCE) * along * ny;
+    }
+
+    // Draw: white eyeball with a dark outline, then the black pupil.
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.lineWidth = Math.max(2, radius * 0.08);
+    ctx.strokeStyle = '#222222';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(eye.pupil.x, eye.pupil.y, pupilRadius, 0, Math.PI * 2);
+    ctx.fillStyle = '#111111';
+    ctx.fill();
+  }
+
+  startButton.addEventListener('click', start);
+  stopButton.addEventListener('click', stop);
+  window.googlyReady = true;    // tells the safety check below that MediaPipe loaded
+</script>
+
+<script>
+  // SAFETY CHECK: if the MediaPipe library never arrives, the code above
+  // cannot run at all. Say so instead of leaving a button that does nothing.
+  setTimeout(function () {
+    if (!window.googlyReady) {
+      document.getElementById('status').textContent =
+        'The face-tracking library did not load. Check your internet connection and refresh.';
+      document.getElementById('start').disabled = true;
+    }
+  }, 6000);
+</script>
+</body>
+</html>
