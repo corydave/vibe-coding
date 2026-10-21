@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Dave's Launch Pad",
+  "version": "1.0",
+  "description": "My own new tab page: a greeting, the time, and the links I use every day.",
+  "chrome_url_overrides": { "newtab": "newtab.html" }
+}

@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Page Notes",
+  "version": "1.0",
+  "description": "A side panel that counts what is on a page and keeps a note for each page you visit.",
+  "permissions": ["sidePanel", "activeTab", "scripting"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "Open Page Notes" }
+}

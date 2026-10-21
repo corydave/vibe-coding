@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<!-- v1.0 - initial build -->
+<!--
+  Launch Pad - the page Chrome shows when you open a new tab.
+
+  WHY THERE IS NO <script> BLOCK IN THIS FILE
+  Every app in this course so far kept its JavaScript inside the HTML file.
+  Chrome does not allow that in an extension: a page that belongs to an
+  extension may only run scripts that live in their OWN files inside the
+  extension's folder. So the code is in newtab.js, and this file just points
+  at it with <script src="newtab.js">.
+
+  PERMISSIONS: none. Replacing the new tab page needs no permission at all -
+  it only ever touches this one page, which we wrote.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New Tab</title>
+  <style>
+    /* ---------- Colors, as variables so they are easy to change ---------- */
+    :root {
+      --bg: #f6f5f2;          /* page background: a warm off-white */
+      --text: #1f2328;        /* main text: near-black */
+      --muted: #57606a;       /* the date and small text */
+      --card: #ffffff;        /* link tiles */
+      --accent: #5b3cc4;      /* the focus ring and hover color */
+    }
+    /* Dark mode: if the computer is set to dark, swap the colors. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181d;
+        --text: #e6e6e6;
+        --muted: #a0a7b0;
+        --card: #22262e;
+        --accent: #b7a4ff;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;          /* everything sits in the middle */
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      padding: 24px;
+    }
+
+    main { width: 100%; max-width: 760px; text-align: center; }
+
+    #greeting { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 600; margin: 0; }
+    #clock    { font-size: clamp(3rem, 12vw, 6rem); font-weight: 300; margin: 8px 0 0;
+                font-variant-numeric: tabular-nums; }   /* digits stay the same width, so the clock doesn't wobble */
+    #date     { color: var(--muted); margin: 4px 0 32px; }
+
+    /* The links: a grid of tiles that wraps on narrow screens. */
+    #links {
+      list-style: none; padding: 0; margin: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+    }
+    #links a {
+      display: block;
+      padding: 18px 12px;
+      background: var(--card);
+      color: var(--text);
+      text-decoration: none;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      font-weight: 500;
+    }
+    #links a:hover { color: var(--accent); }
+    /* A clear focus ring for people using the keyboard. Never remove this. */
+    #links a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="greeting">Hello</h1>
+    <!-- aria-live is OFF on purpose: a screen reader announcing the time every
+         second would be unbearable. The time is still readable on demand. -->
+    <p id="clock" aria-label="Current time">--:--</p>
+    <p id="date"></p>
+
+    <nav aria-label="My links">
+      <ul id="links"></ul>
+    </nav>
+  </main>
+
+  <!-- The code lives in its own file. See the note at the top. -->
+  <script src="newtab.js"></script>
+</body>
+</html>

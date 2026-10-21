@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Word Swap",
+  "version": "1.0",
+  "description": "Swaps one phrase for another on English Wikipedia. Switch me off when you are done.",
+  "content_scripts": [
+    {
+      "matches": ["https://en.wikipedia.org/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -80,7 +80,8 @@
 <script>
   // ==================================================================
   // THE APPS. One line per app: which group it is in, the folder name on
-  // GitHub, the name to show, and a few words about it.
+  // GitHub, the name to show, and a few words about it. Optional "href"
+  // overrides where the card links to.
   // ==================================================================
   const APPS = [
     { group: 'First builds',        folder: 'qr-code',          name: 'QR Code Generator',      what: 'Type anything, get a QR code.' },
@@ -102,7 +103,14 @@
     { group: 'Borrowed superpowers', folder: 'roll-the-ball',   name: 'Roll the Ball',          what: 'A tiny 3D game, built with Three.js.' },
     { group: 'Borrowed superpowers', folder: 'googly-eyes',     name: 'Googly Eyes',            what: 'Face tracking with MediaPipe.' },
     { group: 'Borrowed superpowers', folder: 'pdf-toolkit',     name: 'PDF Toolkit',            what: 'Merge and stamp PDFs, privately.' },
-    { group: 'Borrowed superpowers', folder: 'dashboard',       name: 'Spreadsheet Dashboard',  what: 'A CSV or Excel file, turned into charts.' }
+    { group: 'Borrowed superpowers', folder: 'dashboard',       name: 'Spreadsheet Dashboard',  what: 'A CSV or Excel file, turned into charts.' },
+    // Browser extensions have no page to open on this site - they are folders
+    // you load into Chrome. So "href" sends these four to the FILES on GitHub
+    // instead (the new tab page is the exception: it is also a normal page).
+    { group: 'Browser extensions',  folder: 'launch-pad',       name: 'Launch Pad',             what: 'My own new tab page.',                  href: 'launch-pad/newtab.html' },
+    { group: 'Browser extensions',  folder: 'word-swap',        name: 'Word Swap',              what: 'Rewrites words on any website.',       href: 'https://github.com/corydave/vibe-coding/tree/main/word-swap' },
+    { group: 'Browser extensions',  folder: 'quick-draw',       name: 'Quick Draw',             what: 'Text I retype, dropped into any box.', href: 'https://github.com/corydave/vibe-coding/tree/main/quick-draw' },
+    { group: 'Browser extensions',  folder: 'page-notes',       name: 'Page Notes',             what: 'Counts a page, keeps a note on it.',    href: 'https://github.com/corydave/vibe-coding/tree/main/page-notes' }
   ];
 
   // ==================================================================
@@ -127,7 +135,9 @@
     APPS.filter(function (app) { return app.group === group; }).forEach(function (app) {
       const li = document.createElement('li');
       const link = document.createElement('a');
-      link.href = app.folder + '/';          // a folder address: the browser opens its index.html
+      // A folder address opens that folder's index.html. An app with its own
+      // "href" (the extensions) goes there instead.
+      link.href = app.href || (app.folder + '/');
       const name = document.createElement('span');
       name.className = 'name';
       name.textContent = app.name;
