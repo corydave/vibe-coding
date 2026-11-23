@@ -1,0 +1,1955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <!--
+    SECURITY AND PRIVACY (designed in from the start):
+    - This Content Security Policy tells the browser that this page may NOT
+      load anything from anywhere else: no outside scripts, no fonts, no
+      images, and no network requests of any kind (connect-src 'none').
+    - The only things it may load from its own folder ('self') are the
+      install files: manifest.json and the two icon images.
+    - The game never sends anything to a server. The only thing it saves is
+      your settings, in this browser's localStorage, and that never leaves
+      your device.
+    - 'unsafe-inline' is needed only because all the code lives inside this
+      one file, which is what makes the single-file design possible.
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <meta name="referrer" content="no-referrer">
+
+  <!--
+    INSTALLABLE APP SETUP
+    - manifest.json tells browsers the app's name, colors and icons.
+    - apple-touch-icon is the icon iPhones and iPads use on the home screen.
+    - theme-color tints the browser bar / status bar to match the game.
+  -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#04050f">
+  <meta name="apple-mobile-web-app-title" content="Vertigo Pong">
+
+  <title>Vertigo Pong - 3D Pong with a spinning camera</title>
+
+  <style>
+    /* =========================================================
+       BASIC PAGE SETUP
+       The game canvas fills the whole screen. The scoreboard (HUD)
+       floats on top of it.
+       ========================================================= */
+    :root {
+      --bg: #04050f;
+      --text: #e8eaff;
+      --muted: #b7bcf0;
+      --player: #22d3ee;
+      --cpu: #f472b6;
+      --ball: #fde047;
+      --panel: rgba(10, 12, 36, 0.95);
+      --border: #6d7cff;
+      --focus: #fde047;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;            /* no scrollbars during play */
+    }
+
+    /* The game area. touch-action: none stops the page from scrolling
+       or zooming while you drag your finger to move the paddle. */
+    #game-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    /* A clear, high-contrast focus ring for keyboard users */
+    :focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+    /* Softer focus ring on the game area so it doesn't distract during play */
+    #game-canvas:focus-visible {
+      outline: 3px solid rgba(253, 224, 71, 0.45);
+      outline-offset: -6px;
+    }
+
+    /* Hides text visually but keeps it available to screen readers */
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* =========================================================
+       SCOREBOARD (HUD = "heads-up display")
+       ========================================================= */
+    .hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 0.5rem;
+      /* env(safe-area-inset-*) keeps things clear of phone notches */
+      padding: calc(0.6rem + env(safe-area-inset-top)) calc(0.9rem + env(safe-area-inset-right)) 0.6rem calc(0.9rem + env(safe-area-inset-left));
+      pointer-events: none;        /* clicks pass through to the canvas... */
+      text-shadow: 0 0 12px rgba(0, 0, 0, 0.9);
+      z-index: 2;                  /* sit on top of the game canvas */
+    }
+    .hud button { pointer-events: auto; }  /* ...except on buttons */
+
+    .score {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .score--cpu { justify-content: flex-end; }
+    .score__label {
+      font-size: clamp(0.8rem, 2.5vw, 1rem);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .score__number {
+      font-size: clamp(1.8rem, 7vw, 3rem);
+      font-weight: 800;
+      line-height: 1;
+    }
+    .score--player { color: var(--player); }
+    .score--cpu { color: var(--cpu); }
+
+    .hud__middle {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .rally {
+      margin: 0;
+      min-height: 1.2em;
+      font-size: clamp(0.75rem, 2.2vw, 0.95rem);
+      font-weight: 700;
+      color: var(--ball);
+      letter-spacing: 0.06em;
+    }
+
+    /* =========================================================
+       BUTTONS
+       ========================================================= */
+    button {
+      font: inherit;
+      font-weight: 700;
+      border-radius: 999px;
+      border: 2px solid var(--border);
+      background: rgba(20, 24, 70, 0.85);
+      color: var(--text);
+      padding: 0.55rem 1.1rem;
+      min-height: 44px;           /* comfortable touch target size */
+      cursor: pointer;
+    }
+    button:hover { background: rgba(40, 48, 120, 0.95); }
+    .button--primary {
+      background: var(--player);
+      border-color: var(--player);
+      color: #031018;
+    }
+    .button--primary:hover { background: #67e8f9; }
+    .hud button { padding: 0.35rem 0.9rem; font-size: 0.9rem; }
+
+    /* =========================================================
+       BIG CENTER BANNER ("Ready", "GO!", "Point!")
+       This is decoration only; screen readers hear the same news
+       through the hidden announcer element.
+       ========================================================= */
+    .banner {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) scale(0.8);
+      margin: 0;
+      font-size: clamp(2.2rem, 10vw, 5.5rem);
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      text-shadow: 0 0 24px currentColor, 0 0 6px rgba(0, 0, 0, 0.9);
+      white-space: nowrap;
+      z-index: 2;                  /* sit on top of the game canvas */
+    }
+    .banner.is-visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    /* =========================================================
+       MENU / PAUSE / GAME OVER DIALOG
+       Uses the built-in <dialog> element, which handles focus
+       trapping and the Escape key for us.
+       ========================================================= */
+    dialog {
+      width: min(30rem, calc(100% - 2rem));
+      max-height: calc(100dvh - 2rem);
+      overflow: auto;
+      padding: 1.4rem 1.4rem 1.2rem;
+      border: 2px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: 0 0 40px rgba(109, 124, 255, 0.45);
+    }
+    dialog::backdrop {
+      background: rgba(2, 3, 12, 0.55);
+    }
+    dialog h1, dialog h2 {
+      margin: 0 0 0.4rem;
+      font-size: clamp(1.6rem, 6vw, 2.2rem);
+      line-height: 1.1;
+      background: linear-gradient(90deg, var(--player), var(--ball), var(--cpu));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    dialog p { line-height: 1.45; margin: 0.4rem 0 0.9rem; }
+
+    fieldset {
+      border: 1px solid rgba(109, 124, 255, 0.6);
+      border-radius: 12px;
+      padding: 0.6rem 0.9rem 0.8rem;
+      margin: 0 0 0.9rem;
+    }
+    legend { padding: 0 0.4rem; font-weight: 700; color: var(--muted); }
+
+    .field {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 0.45rem 0;
+    }
+    .field--check {
+      grid-template-columns: auto 1fr;
+    }
+    select {
+      font: inherit;
+      padding: 0.45rem 0.5rem;
+      min-height: 44px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: #0d1033;
+      color: var(--text);
+    }
+    input[type="checkbox"] {
+      width: 1.35rem;
+      height: 1.35rem;
+      accent-color: var(--player);
+    }
+
+    details {
+      margin: 0 0 0.9rem;
+      border: 1px solid rgba(109, 124, 255, 0.6);
+      border-radius: 12px;
+      padding: 0.5rem 0.9rem;
+    }
+    summary { cursor: pointer; font-weight: 700; min-height: 32px; display: list-item; padding-top: 0.2rem; }
+    details ul { padding-left: 1.2rem; margin: 0.5rem 0; line-height: 1.6; }
+    kbd {
+      font-family: ui-monospace, monospace;
+      font-size: 0.85em;
+      border: 1px solid var(--muted);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      padding: 0 0.3rem;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    .actions button { flex: 1 1 10rem; }
+
+    /* "Put it on your home screen" section */
+    .install h3 {
+      margin: 0.8rem 0 0.2rem;
+      font-size: 1rem;
+      color: var(--player);
+    }
+    .install ol { padding-left: 1.4rem; margin: 0.3rem 0; line-height: 1.5; }
+    .install p { margin: 0.5rem 0; }
+    .install button { margin: 0.3rem 0 0.2rem; }
+
+    .motion-warning {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0;
+    }
+
+    /* If someone's device asks for less motion, soften the UI animations too */
+    @media (prefers-reduced-motion: reduce) {
+      .banner { transition: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==========================================================
+       SCOREBOARD
+       ========================================================== -->
+  <header class="hud" aria-label="Scoreboard">
+    <div class="score score--player">
+      <span class="score__label" id="player-label">You</span>
+      <span class="score__number" id="player-score" aria-describedby="player-label">0</span>
+    </div>
+
+    <div class="hud__middle">
+      <p class="rally" id="rally-display" aria-hidden="true"></p>
+      <button type="button" id="pause-button" aria-keyshortcuts="P Space Escape">Pause</button>
+    </div>
+
+    <div class="score score--cpu">
+      <span class="score__number" id="cpu-score" aria-describedby="cpu-label">0</span>
+      <span class="score__label" id="cpu-label">CPU</span>
+    </div>
+  </header>
+
+  <!-- ==========================================================
+       GAME AREA
+       ========================================================== -->
+  <main>
+    <canvas id="game-canvas" tabindex="0" role="img"
+            aria-label="Vertigo Pong playing field. Your paddle is cyan, the computer's paddle is pink, and the ball is yellow. Use the arrow keys or W A S D to move your paddle. Press P to pause."></canvas>
+    <p class="banner" id="banner" aria-hidden="true"></p>
+  </main>
+
+  <!-- Screen readers hear game news (points, pauses, results) from here -->
+  <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
+  <noscript>
+    <p style="position:fixed;inset:0;display:grid;place-items:center;padding:2rem;text-align:center;">
+      Vertigo Pong needs JavaScript turned on to run.
+    </p>
+  </noscript>
+
+  <!-- ==========================================================
+       MENU / PAUSE / GAME OVER DIALOG
+       The same dialog is reused; JavaScript swaps the wording.
+       ========================================================== -->
+  <dialog id="menu-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-message">
+    <h1 id="dialog-title">Vertigo Pong</h1>
+    <p id="dialog-message"></p>
+
+    <form id="settings-form" novalidate>
+      <fieldset>
+        <legend>Settings</legend>
+
+        <div class="field">
+          <label for="difficulty-select">Opponent skill</label>
+          <select id="difficulty-select"></select>
+        </div>
+
+        <div class="field">
+          <label for="motion-select">Camera motion</label>
+          <select id="motion-select" aria-describedby="motion-warning"></select>
+        </div>
+
+        <div class="field field--check">
+          <input type="checkbox" id="camera-controls-checkbox" checked>
+          <label for="camera-controls-checkbox">Arrow keys follow the spinning camera (left on screen is always left)</label>
+        </div>
+
+        <div class="field field--check">
+          <input type="checkbox" id="sound-checkbox" checked>
+          <label for="sound-checkbox">Sound effects</label>
+        </div>
+      </fieldset>
+    </form>
+
+    <details>
+      <summary>How to play</summary>
+      <ul>
+        <li>Keep the yellow ball from getting past your <strong style="color:var(--player)">cyan</strong> paddle (the one closest to you).</li>
+        <li><strong>Mouse:</strong> point where you want your paddle.</li>
+        <li><strong>Touch:</strong> drag your finger on the screen.</li>
+        <li><strong>Keyboard:</strong> <kbd>Arrow keys</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>.</li>
+        <li>Hit the ball with the edge of your paddle to angle it. Moving the paddle as you hit adds spin.</li>
+        <li><kbd>P</kbd>, <kbd>Space</kbd> or <kbd>Esc</kbd> pauses. <kbd>C</kbd> changes camera motion. <kbd>M</kbd> mutes sound.</li>
+        <li>The yellow ring around the box shows how far away the ball is. The longer the rally, the faster everything spins.</li>
+      </ul>
+    </details>
+
+    <!-- Install instructions. The words come from GAME_CONTENT.installSection
+         in the script, and the whole section hides itself once the game is
+         running as an installed app. -->
+    <details class="install" id="install-section">
+      <summary id="install-summary">Put it on your home screen</summary>
+      <p id="install-intro"></p>
+      <!-- Only appears in browsers that offer a one-click install (Chrome, Edge, Android) -->
+      <button type="button" id="install-button" hidden>Install now</button>
+      <div id="install-platforms"></div>
+    </details>
+
+    <div class="actions">
+      <button type="button" class="button--primary" id="start-button" autofocus>Start game</button>
+      <button type="button" id="restart-button" hidden>Restart game</button>
+    </div>
+
+    <p class="motion-warning" id="motion-warning">
+      Heads up: the camera spins constantly and the screen flashes when points are scored.
+      If motion or flashing bothers you, set Camera motion to "Off".
+    </p>
+  </dialog>
+
+  <script>
+  "use strict";
+
+  /* ==========================================================================
+     1. EDITABLE CONTENT
+     --------------------------------------------------------------------------
+     Change the words, names, colors and messages here. You do not need to
+     touch any other part of the code to customize the game's text.
+     ========================================================================== */
+  const GAME_CONTENT = {
+    title: "Vertigo Pong",
+    tagline: "Classic Pong inside a spinning 3D box. The camera never sits still, and the longer the rally lasts, the wilder it gets.",
+    playerName: "You",
+    opponentName: "CPU",
+    pointsToWin: 7,
+
+    // Short words that flash in the middle of the screen
+    bannerText: {
+      ready: "Ready",
+      go: "GO!",
+      playerPoint: "Point!",
+      cpuPoint: "Missed!"
+    },
+
+    // One of these is picked at random when YOU score
+    playerScoreLines: ["Nice shot!", "Point for you!", "Right through the spin!", "Clean winner!"],
+
+    // One of these is picked at random when the CPU scores
+    cpuScoreLines: ["The CPU takes it.", "Point to the CPU.", "Dizzy yet?", "So close!"],
+
+    pausedTitle: "Paused",
+    pausedMessage: "Take a breath and let the room stop spinning. Your game is waiting.",
+    winTitle: "You win!",
+    winMessage: "Your inner ear is a champion.",
+    loseTitle: "CPU wins",
+    loseMessage: "The room is still spinning. Want a rematch?",
+
+    // The "Put it on your home screen" section in the menu
+    installSection: {
+      summary: "Put it on your home screen",
+      intro: "Install Vertigo Pong and it opens like a regular app, full screen, with its own icon.",
+      installButton: "Install now",
+      platforms: [
+        {
+          heading: "iPhone or iPad",
+          steps: [
+            "Open this page in Safari.",
+            "Tap the Share button (the square with an arrow pointing up).",
+            "Scroll down and tap \"Add to Home Screen\".",
+            "Tap \"Add\" in the top corner."
+          ]
+        },
+        {
+          heading: "Android",
+          steps: [
+            "Open this page in Chrome.",
+            "Tap the three-dot menu in the top corner.",
+            "Tap \"Add to Home screen\" or \"Install app\".",
+            "Tap \"Install\" to confirm."
+          ]
+        },
+        {
+          heading: "Laptop or desktop",
+          steps: [
+            "In Chrome or Edge, click the install icon at the right end of the address bar (a small screen with a down arrow).",
+            "No icon? Open the browser menu and look for \"Install\" (Chrome puts it under \"Cast, save, and share\").",
+            "On a Mac in Safari, choose File, then \"Add to Dock\".",
+            "Click \"Install\" or \"Add\" to confirm."
+          ]
+        }
+      ]
+    },
+
+    // Colors (any CSS color works). Keep good contrast against the dark background.
+    colors: {
+      background: "#04050f",
+      court: "#6d7cff",
+      courtCenter: "#a5b4fc",
+      player: "#22d3ee",
+      cpu: "#f472b6",
+      ball: "#fde047",
+      stars: "#ffffff"
+    }
+  };
+
+  /* ==========================================================================
+     2. GAME SETTINGS (numbers you can tweak)
+     ========================================================================== */
+  const GAME_SETTINGS = {
+    // Size of the 3D box the game is played in (in "world units")
+    court: { width: 8, height: 5, length: 16 },
+
+    paddle: { width: 2.0, height: 1.4 },
+    ballRadius: 0.28,
+
+    physics: {
+      serveSpeed: 11,          // how fast the ball travels toward a paddle at the start
+      speedUpPerHit: 1.06,     // each hit multiplies the speed by this (1.06 = 6% faster)
+      maxBallSpeed: 30,        // the ball never goes faster than this
+      paddleAngleStrength: 0.45, // how much hitting with the paddle's edge angles the ball
+      paddleSpinStrength: 0.3, // how much moving the paddle during a hit curves the ball
+      playerPaddleSpeed: 34,   // top speed of your paddle when following the mouse/finger
+      keyboardSpeed: 14        // speed of your paddle when using the keyboard
+    },
+
+    // How good the computer opponent is.
+    //   cpuSpeed: how fast its paddle can move
+    //   cpuError: how far off its aim can be (bigger = more misses)
+    //   reactionLine: how early it starts moving (higher = earlier)
+    difficulty: {
+      easy:   { label: "Easy",   cpuSpeed: 7,  cpuError: 1.9,  reactionLine: 2 },
+      normal: { label: "Normal", cpuSpeed: 10, cpuError: 1.35, reactionLine: 5 },
+      hard:   { label: "Hard",   cpuSpeed: 13, cpuError: 1.0,  reactionLine: 7 }
+    },
+
+    // How much the camera moves. All angles are in radians (6.28 = a full turn).
+    //   rollSpeed:  constant spin around the middle of the screen
+    //   yawSpin:    constant spin around the box (chaos only - you may see it from the side!)
+    //   yawSwing / pitchSwing: back-and-forth swaying
+    //   jolt:       how hard the camera gets knocked when the ball is hit
+    //   rallyRamp:  how much faster things spin with each hit in a rally
+    //   trails:     motion-blur streaks
+    //   shake:      screen shake (in pixels) when a point is scored
+    //   flash:      whether the screen flashes when a point is scored
+    motionLevels: {
+      off:      { label: "Off (still camera)", rollSpeed: 0,    yawSpin: 0,    yawSwing: 0,    pitchSwing: 0,    basePitch: 0.22, jolt: 0,    rallyRamp: 0,    trails: false, shake: 0,  flash: false },
+      mild:     { label: "Mild",               rollSpeed: 0.12, yawSpin: 0,    yawSwing: 0.25, pitchSwing: 0.18, basePitch: 0.15, jolt: 0.08, rallyRamp: 0.02, trails: true,  shake: 4,  flash: true },
+      frenetic: { label: "Frenetic",           rollSpeed: 0.55, yawSpin: 0,    yawSwing: 0.7,  pitchSwing: 0.5,  basePitch: 0.1,  jolt: 0.3,  rallyRamp: 0.08, trails: true,  shake: 10, flash: true },
+      chaos:    { label: "Chaos (full spins)", rollSpeed: 1.1,  yawSpin: 0.45, yawSwing: 0.4,  pitchSwing: 0.7,  basePitch: 0,    jolt: 0.55, rallyRamp: 0.1,  trails: true,  shake: 16, flash: true }
+    },
+
+    // How far the camera sits from the center of the box
+    cameraDistance: 17,
+
+    // Everything this app saves in localStorage starts with this name.
+    // It is the app's folder name plus a dash, so it never collides with
+    // other apps hosted on the same website. Change it if you rename the folder.
+    storagePrefix: "vertigo-pong-"
+  };
+
+
+  /* ==========================================================================
+     3. PAGE ELEMENTS
+     We look up every HTML element we need once, here, and reuse them.
+     ========================================================================== */
+  const canvas = document.getElementById("game-canvas");
+  const ctx = canvas.getContext("2d");
+
+  const ui = {
+    playerLabel: document.getElementById("player-label"),
+    cpuLabel: document.getElementById("cpu-label"),
+    playerScore: document.getElementById("player-score"),
+    cpuScore: document.getElementById("cpu-score"),
+    rally: document.getElementById("rally-display"),
+    pauseButton: document.getElementById("pause-button"),
+    banner: document.getElementById("banner"),
+    announcer: document.getElementById("announcer"),
+    dialog: document.getElementById("menu-dialog"),
+    dialogTitle: document.getElementById("dialog-title"),
+    dialogMessage: document.getElementById("dialog-message"),
+    settingsForm: document.getElementById("settings-form"),
+    startButton: document.getElementById("start-button"),
+    restartButton: document.getElementById("restart-button"),
+    difficultySelect: document.getElementById("difficulty-select"),
+    motionSelect: document.getElementById("motion-select"),
+    cameraControlsCheckbox: document.getElementById("camera-controls-checkbox"),
+    soundCheckbox: document.getElementById("sound-checkbox"),
+    installSection: document.getElementById("install-section"),
+    installSummary: document.getElementById("install-summary"),
+    installIntro: document.getElementById("install-intro"),
+    installButton: document.getElementById("install-button"),
+    installPlatforms: document.getElementById("install-platforms")
+  };
+
+
+  /* ==========================================================================
+     4. HANDY SHORTCUTS FOR SIZES
+     "Half" sizes are useful because the box is centered on (0, 0, 0).
+     The box goes from -HALF_WIDTH to +HALF_WIDTH left to right, etc.
+     ========================================================================== */
+  const HALF_WIDTH = GAME_SETTINGS.court.width / 2;
+  const HALF_HEIGHT = GAME_SETTINGS.court.height / 2;
+  const HALF_LENGTH = GAME_SETTINGS.court.length / 2;
+  const BALL_RADIUS = GAME_SETTINGS.ballRadius;
+  const PADDLE_HALF_W = GAME_SETTINGS.paddle.width / 2;
+  const PADDLE_HALF_H = GAME_SETTINGS.paddle.height / 2;
+
+  // Your paddle sits at the near end (+z). The CPU paddle sits at the far end (-z).
+  const PLAYER_Z = HALF_LENGTH;
+  const CPU_Z = -HALF_LENGTH;
+
+
+  /* ==========================================================================
+     5. GAME STATE
+     Everything that changes while the game runs lives in these objects.
+     ========================================================================== */
+
+  // Player choices from the settings menu.
+  // If the device says "reduce motion", we start with the camera still.
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const settings = {
+    difficulty: "normal",
+    motion: prefersReducedMotion ? "off" : "frenetic",
+    cameraRelativeControls: true,
+    sound: true
+  };
+
+  /* --------------------------------------------------------------------------
+     SAVING SETTINGS (localStorage)
+     Your settings are saved in this browser only, so they're still there next
+     time. Every name starts with GAME_SETTINGS.storagePrefix.
+     - try/catch: some browsers block storage (for example private mode), and
+       the game should still work there, just without remembering anything.
+     - Saved values are CHECKED before use, because anything in storage could
+       have been edited by hand. We only accept values we recognize.
+     -------------------------------------------------------------------------- */
+  const SETTINGS_KEY = GAME_SETTINGS.storagePrefix + "settings";
+
+  function loadSavedSettings() {
+    let saved;
+    try {
+      saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    } catch (error) {
+      return;  // storage blocked or saved data is broken: keep the defaults
+    }
+    if (!saved || typeof saved !== "object") return;
+
+    // Only copy over values that are on our list of allowed choices
+    if (Object.hasOwn(GAME_SETTINGS.difficulty, saved.difficulty)) settings.difficulty = saved.difficulty;
+    if (Object.hasOwn(GAME_SETTINGS.motionLevels, saved.motion)) settings.motion = saved.motion;
+    if (typeof saved.cameraRelativeControls === "boolean") settings.cameraRelativeControls = saved.cameraRelativeControls;
+    if (typeof saved.sound === "boolean") settings.sound = saved.sound;
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (error) {
+      // Storage is blocked or full. Not a problem - the game just won't remember.
+    }
+  }
+
+  loadSavedSettings();
+
+  const state = {
+    mode: "menu",       // "menu" | "playing" | "paused" | "over"
+    phase: "serve",     // "serve" (waiting to launch) | "rally" (ball in play)
+    serveTimer: 0,      // seconds left before the ball launches
+    serveDirection: 1,  // +1 = toward you, -1 = toward the CPU
+    playerScore: 0,
+    cpuScore: 0,
+    rally: 0,           // hits in the current rally
+    longestRally: 0,
+    ball: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
+    trail: [],          // recent ball positions for the glowing tail
+    particles: [],      // sparks when the ball hits something
+    player: { x: 0, y: 0, vx: 0, vy: 0, targetX: 0, targetY: 0 },
+    cpu: { x: 0, y: 0, aimOffsetX: 0, aimOffsetY: 0 },
+    flash: 0,           // screen flash strength (fades to 0)
+    flashColor: "#ffffff",
+    shake: 0            // screen shake strength in pixels (fades to 0)
+  };
+
+  // The camera's angles. "Jolt" values are springy extra kicks added on hits.
+  const camera = {
+    yaw: 0,            // turning left/right around the box
+    pitch: 0,          // tilting up/down
+    roll: 0,           // spinning around the center of the screen
+    yawSpinAngle: 0,   // running total for continuous yaw (chaos mode)
+    rollDirection: 1,  // +1 or -1, flips now and then
+    clock: 0,          // a timer that speeds up as intensity rises
+    jolt: { yaw: 0, pitch: 0, roll: 0, vYaw: 0, vPitch: 0, vRoll: 0 }
+  };
+
+  // Information about the screen and the current camera view
+  const view = {
+    width: 0, height: 0,
+    centerX: 0, centerY: 0,
+    focal: 1,                         // zoom amount for the 3D projection
+    matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],  // camera rotation
+    shakeX: 0, shakeY: 0
+  };
+
+  // Input tracking
+  const keysDown = new Set();               // "left", "right", "up", "down"
+  const pointer = { active: false, screenX: 0, screenY: 0 };
+  let inputMode = "pointer";                // which input moved the paddle last
+
+
+  /* ==========================================================================
+     6. SMALL MATH HELPERS
+     ========================================================================== */
+
+  // Keep a number between a minimum and a maximum
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  // A random number between min and max
+  function randomBetween(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  // Pick a random item from a list
+  function randomItem(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  // Imagine a ball bouncing back and forth between two walls.
+  // Given where it WOULD be with no walls, this tells you where it really ends up.
+  // The CPU uses this to predict where the ball will arrive.
+  function foldIntoRange(value, min, max) {
+    const span = max - min;
+    let travel = (value - min) % (2 * span);
+    if (travel < 0) travel += 2 * span;
+    return travel <= span ? min + travel : max - (travel - span);
+  }
+
+  // Multiply two 3x3 matrices. A matrix here is just a grid of 9 numbers
+  // that describes a rotation. Multiplying two rotations combines them.
+  function multiplyMatrices(a, b) {
+    const result = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        result[row][col] = a[row][0] * b[0][col] + a[row][1] * b[1][col] + a[row][2] * b[2][col];
+      }
+    }
+    return result;
+  }
+
+  // Build the camera's rotation from its three angles.
+  // Order: first turn around the box (yaw), then tilt (pitch), then spin the screen (roll).
+  function buildRotationMatrix(yaw, pitch, roll) {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const cr = Math.cos(roll), sr = Math.sin(roll);
+
+    const yawMatrix   = [[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]];   // rotate around the up/down axis
+    const pitchMatrix = [[1, 0, 0], [0, cp, -sp], [0, sp, cp]];   // rotate around the left/right axis
+    const rollMatrix  = [[cr, -sr, 0], [sr, cr, 0], [0, 0, 1]];   // rotate around the screen's center
+
+    return multiplyMatrices(rollMatrix, multiplyMatrices(pitchMatrix, yawMatrix));
+  }
+
+  // Rotation matrices can be "undone" by flipping them across the diagonal
+  // (this is called the transpose). We use it to go from camera space back
+  // to world space, for example to figure out where the mouse points in the box.
+  function applyTransposed(m, x, y, z) {
+    return {
+      x: m[0][0] * x + m[1][0] * y + m[2][0] * z,
+      y: m[0][1] * x + m[1][1] * y + m[2][1] * z,
+      z: m[0][2] * x + m[1][2] * y + m[2][2] * z
+    };
+  }
+
+
+  /* ==========================================================================
+     7. 3D PROJECTION (turning 3D points into 2D screen points)
+     --------------------------------------------------------------------------
+     How it works, in plain words:
+       1. Rotate the point by the camera's rotation.
+       2. Work out how far in front of the camera it is ("depth").
+       3. Divide by depth: far things shrink toward the center, near things grow.
+     ========================================================================== */
+  function project(x, y, z) {
+    const m = view.matrix;
+
+    // Step 1: rotate the world point into "camera space"
+    const camX = m[0][0] * x + m[0][1] * y + m[0][2] * z;
+    const camY = m[1][0] * x + m[1][1] * y + m[1][2] * z;
+    const camZ = m[2][0] * x + m[2][1] * y + m[2][2] * z;
+
+    // Step 2: the camera sits at camZ = cameraDistance, looking toward -z
+    const depth = GAME_SETTINGS.cameraDistance - camZ;
+    if (depth < 0.5) return null;   // behind (or too close to) the camera: skip it
+
+    // Step 3: perspective divide
+    const scale = view.focal / depth;
+    return {
+      x: view.centerX + camX * scale + view.shakeX,
+      y: view.centerY - camY * scale + view.shakeY,  // minus because screen y goes DOWN
+      scale: scale,
+      depth: depth
+    };
+  }
+
+  // The reverse question: "if I touch this spot on the screen, where does that
+  // land on the flat plane at depth planeZ inside the box?" (This is a "raycast".)
+  function screenToPlane(screenX, screenY, planeZ) {
+    const m = view.matrix;
+
+    // Direction of the ray, in camera space
+    const a = (screenX - view.centerX) / view.focal;
+    const b = -(screenY - view.centerY) / view.focal;
+
+    // Convert the camera's position and the ray direction into world space
+    const origin = applyTransposed(m, 0, 0, GAME_SETTINGS.cameraDistance);
+    const direction = applyTransposed(m, a, b, -1);
+
+    // If the ray runs almost parallel to the plane, it never hits it
+    if (Math.abs(direction.z) < 0.0001) return null;
+
+    const distance = (planeZ - origin.z) / direction.z;
+    if (distance <= 0) return null;   // the plane is behind the camera
+
+    return { x: origin.x + direction.x * distance, y: origin.y + direction.y * distance };
+  }
+
+
+  /* ==========================================================================
+     8. SOUND (made on the fly with the Web Audio API - no audio files needed)
+     Sounds are panned left/right to match where the ball is on screen,
+     which also gives an audio hint about the ball's position.
+     ========================================================================== */
+  const sound = {
+    context: null,
+
+    // Browsers only allow audio after the player clicks or presses a key,
+    // so we create the audio system the first time the game starts.
+    unlock() {
+      if (!this.context) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;  // very old browser: just stay silent
+        this.context = new AudioContextClass();
+      }
+      if (this.context.state === "suspended") this.context.resume();
+    },
+
+    // Play one short beep
+    tone(frequency, duration, waveType, volume, pan, slideTo) {
+      if (!settings.sound || !this.context || isDemo()) return;
+      const now = this.context.currentTime;
+
+      const oscillator = this.context.createOscillator();
+      const gain = this.context.createGain();
+      oscillator.type = waveType;
+      oscillator.frequency.setValueAtTime(frequency, now);
+      if (slideTo) oscillator.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+
+      // Quick fade in and out so it doesn't click
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      oscillator.connect(gain);
+      let lastNode = gain;
+      if (this.context.createStereoPanner) {
+        const panner = this.context.createStereoPanner();
+        panner.pan.value = clamp(pan, -1, 1);
+        gain.connect(panner);
+        lastNode = panner;
+      }
+      lastNode.connect(this.context.destination);
+
+      oscillator.start(now);
+      oscillator.stop(now + duration + 0.02);
+    },
+
+    // Named sound effects
+    play(name) {
+      const pan = ballScreenPan();
+      switch (name) {
+        case "playerHit": this.tone(520, 0.09, "square", 0.12, pan); break;
+        case "cpuHit":    this.tone(390, 0.09, "square", 0.10, pan); break;
+        case "wall":      this.tone(240, 0.05, "triangle", 0.08, pan); break;
+        case "serve":     this.tone(700, 0.08, "sine", 0.10, 0); break;
+        case "playerPoint":
+          this.tone(523, 0.12, "square", 0.10, 0);
+          setTimeout(() => this.tone(784, 0.18, "square", 0.10, 0), 110);
+          break;
+        case "cpuPoint":  this.tone(300, 0.35, "sawtooth", 0.08, 0, 90); break;
+      }
+    }
+  };
+
+  // Where is the ball left-to-right on the screen? (-1 = far left, +1 = far right)
+  function ballScreenPan() {
+    const p = project(state.ball.x, state.ball.y, state.ball.z);
+    if (!p || view.width === 0) return 0;
+    return (p.x - view.centerX) / (view.width / 2);
+  }
+
+
+  /* ==========================================================================
+     9. SCREEN SETUP AND RESIZING
+     ========================================================================== */
+  function resizeCanvas() {
+    // Draw extra pixels on high-resolution screens (capped at 2x to stay fast)
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    view.width = window.innerWidth;
+    view.height = window.innerHeight;
+    canvas.width = Math.round(view.width * pixelRatio);
+    canvas.height = Math.round(view.height * pixelRatio);
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);  // so we can draw in normal CSS pixels
+    view.centerX = view.width / 2;
+    view.centerY = view.height / 2;
+  }
+
+  // How "zoomed in" the 3D view is. When the camera spins, the box can point
+  // any direction, so we use the smaller screen side to make sure it fits.
+  function updateFocalLength() {
+    const shortSide = Math.min(view.width, view.height);
+    if (settings.motion === "off") {
+      view.focal = Math.min(view.width * 0.92, view.height * 1.45);
+    } else {
+      view.focal = shortSide * 0.85;
+    }
+  }
+
+
+  /* ==========================================================================
+     10. COURT GEOMETRY
+     The box is drawn as glowing lines. We work out the lines once, here.
+     Each line is a pair of 3D points: [[x1, y1, z1], [x2, y2, z2]].
+     ========================================================================== */
+  function rectangleAtDepth(z) {
+    const left = -HALF_WIDTH, right = HALF_WIDTH, bottom = -HALF_HEIGHT, top = HALF_HEIGHT;
+    return [
+      [[left, bottom, z], [right, bottom, z]],
+      [[right, bottom, z], [right, top, z]],
+      [[right, top, z], [left, top, z]],
+      [[left, top, z], [left, bottom, z]]
+    ];
+  }
+
+  function buildCourtLines() {
+    const lines = { dim: [], edges: [], center: [], playerEnd: [], cpuEnd: [] };
+
+    // The four long edges of the box
+    for (const x of [-HALF_WIDTH, HALF_WIDTH]) {
+      for (const y of [-HALF_HEIGHT, HALF_HEIGHT]) {
+        lines.edges.push([[x, y, -HALF_LENGTH], [x, y, HALF_LENGTH]]);
+      }
+    }
+
+    // Rings around the box every 2 units (they help you judge depth)
+    const ringCount = GAME_SETTINGS.court.length / 2;
+    for (let i = 0; i <= ringCount; i++) {
+      const z = -HALF_LENGTH + i * 2;
+      const ring = rectangleAtDepth(z);
+      if (i === 0) lines.cpuEnd.push(...ring);
+      else if (i === ringCount) lines.playerEnd.push(...ring);
+      else if (Math.abs(z) < 0.001) lines.center.push(...ring);
+      else lines.dim.push(...ring);
+    }
+
+    // Long lines on the floor and ceiling
+    for (const x of [-HALF_WIDTH / 2, 0, HALF_WIDTH / 2]) {
+      lines.dim.push([[x, -HALF_HEIGHT, -HALF_LENGTH], [x, -HALF_HEIGHT, HALF_LENGTH]]);
+      lines.dim.push([[x, HALF_HEIGHT, -HALF_LENGTH], [x, HALF_HEIGHT, HALF_LENGTH]]);
+    }
+    // Long lines on the side walls
+    for (const y of [-HALF_HEIGHT / 2, 0, HALF_HEIGHT / 2]) {
+      lines.dim.push([[-HALF_WIDTH, y, -HALF_LENGTH], [-HALF_WIDTH, y, HALF_LENGTH]]);
+      lines.dim.push([[HALF_WIDTH, y, -HALF_LENGTH], [HALF_WIDTH, y, HALF_LENGTH]]);
+    }
+    return lines;
+  }
+  const COURT_LINES = buildCourtLines();
+
+  // Background stars: random directions all around the camera.
+  // They spin with the camera and make the motion feel bigger.
+  const STARS = [];
+  for (let i = 0; i < 180; i++) {
+    // Pick a random direction (a point on a sphere)
+    const theta = Math.random() * Math.PI * 2;
+    const height = randomBetween(-1, 1);
+    const ring = Math.sqrt(1 - height * height);
+    STARS.push({
+      x: ring * Math.cos(theta), y: height, z: ring * Math.sin(theta),
+      size: randomBetween(0.8, 2.2),
+      brightness: randomBetween(0.25, 0.9)
+    });
+  }
+
+
+  /* ==========================================================================
+     11. GAME FLOW (starting, serving, scoring, pausing)
+     ========================================================================== */
+
+  // In "menu" and "over" modes the computer plays itself as a demo
+  function isDemo() {
+    return state.mode === "menu" || state.mode === "over";
+  }
+
+  function startNewGame() {
+    sound.unlock();
+    state.playerScore = 0;
+    state.cpuScore = 0;
+    state.longestRally = 0;
+    state.particles.length = 0;
+    state.mode = "playing";
+    updateScoreboard();
+    closeDialog();
+    canvas.focus();
+    startServe(1);   // first serve comes toward you
+    announce(`Game started. First to ${GAME_CONTENT.pointsToWin} points wins. Use the arrow keys or W A S D to move your paddle.`);
+  }
+
+  // Put the ball in the middle and wait a moment before launching it
+  function startServe(direction) {
+    const ball = state.ball;
+    ball.x = 0; ball.y = 0; ball.z = 0;
+    ball.vx = 0; ball.vy = 0; ball.vz = 0;
+    state.trail.length = 0;
+    state.phase = "serve";
+    state.serveDirection = direction;
+    state.serveTimer = isDemo() ? 0.7 : 1.1;
+    state.rally = 0;
+    updateRallyDisplay();
+    if (!isDemo()) showBanner(GAME_CONTENT.bannerText.ready, GAME_CONTENT.colors.courtCenter, 900);
+  }
+
+  function launchBall() {
+    const ball = state.ball;
+    const speed = GAME_SETTINGS.physics.serveSpeed;
+    ball.vz = speed * state.serveDirection;
+    ball.vx = randomBetween(-0.25, 0.25) * speed;
+    ball.vy = randomBetween(-0.2, 0.2) * speed;
+    state.phase = "rally";
+    chooseCpuAimError();
+    if (!isDemo()) {
+      showBanner(GAME_CONTENT.bannerText.go, GAME_CONTENT.colors.ball, 450);
+      sound.play("serve");
+    }
+  }
+
+  // Called when the ball gets past a paddle. winner is "player" or "cpu".
+  function pointScored(winner) {
+    const motion = GAME_SETTINGS.motionLevels[settings.motion];
+
+    // During the demo nobody keeps score - just serve again
+    if (isDemo()) {
+      startServe(winner === "player" ? 1 : -1);
+      return;
+    }
+
+    if (winner === "player") state.playerScore++;
+    else state.cpuScore++;
+
+    state.longestRally = Math.max(state.longestRally, state.rally);
+    updateScoreboard();
+
+    // Effects: flash, shake, sound, banner
+    const color = winner === "player" ? GAME_CONTENT.colors.player : GAME_CONTENT.colors.cpu;
+    if (motion.flash) {
+      state.flash = 0.25;
+      state.flashColor = color;
+    }
+    state.shake = motion.shake;
+    sound.play(winner === "player" ? "playerPoint" : "cpuPoint");
+    showBanner(winner === "player" ? GAME_CONTENT.bannerText.playerPoint : GAME_CONTENT.bannerText.cpuPoint, color, 900);
+
+    const line = randomItem(winner === "player" ? GAME_CONTENT.playerScoreLines : GAME_CONTENT.cpuScoreLines);
+    announce(`${line} ${GAME_CONTENT.playerName} ${state.playerScore}, ${GAME_CONTENT.opponentName} ${state.cpuScore}.`);
+
+    // Did someone win the game?
+    if (state.playerScore >= GAME_CONTENT.pointsToWin || state.cpuScore >= GAME_CONTENT.pointsToWin) {
+      endGame(state.playerScore > state.cpuScore);
+      return;
+    }
+
+    // The next serve goes toward whoever lost the point
+    startServe(winner === "player" ? -1 : 1);
+  }
+
+  function endGame(playerWon) {
+    state.mode = "over";
+    keysDown.clear();
+    const title = playerWon ? GAME_CONTENT.winTitle : GAME_CONTENT.loseTitle;
+    const message = `${playerWon ? GAME_CONTENT.winMessage : GAME_CONTENT.loseMessage} Final score: ${state.playerScore} to ${state.cpuScore}. Longest rally: ${state.longestRally} hits.`;
+    openDialog("over", title, message);
+    announce(`${title} ${message}`);
+    startServe(1);  // start the background demo again
+  }
+
+  function pauseGame() {
+    if (state.mode !== "playing") return;
+    state.mode = "paused";
+    keysDown.clear();
+    openDialog("paused", GAME_CONTENT.pausedTitle, GAME_CONTENT.pausedMessage);
+    announce("Game paused.");
+  }
+
+  function resumeGame() {
+    if (state.mode !== "paused") return;
+    state.mode = "playing";
+    closeDialog();
+    canvas.focus();
+    announce("Game resumed.");
+  }
+
+  function togglePause() {
+    if (state.mode === "playing") pauseGame();
+    else if (state.mode === "paused") resumeGame();
+  }
+
+
+  /* ==========================================================================
+     12. CAMERA MOTION
+     ========================================================================== */
+  function updateCamera(dt) {
+    const motion = GAME_SETTINGS.motionLevels[settings.motion];
+
+    // "Intensity" grows with the rally length and as the game goes on
+    const pointsPlayed = state.playerScore + state.cpuScore;
+    const intensity = 1 + Math.min(state.rally, 25) * motion.rallyRamp + pointsPlayed * motion.rallyRamp * 0.4;
+
+    // The demo behind the menu spins more gently
+    const demoCalm = isDemo() ? 0.5 : 1;
+
+    camera.clock += dt * intensity * demoCalm;
+    camera.roll += camera.rollDirection * motion.rollSpeed * intensity * demoCalm * dt;
+    camera.yawSpinAngle += motion.yawSpin * intensity * demoCalm * dt;
+
+    // Springy jolts: each one is pulled back toward zero, like a rubber band
+    const j = camera.jolt;
+    const stiffness = 30, damping = 6;
+    j.vYaw += (-stiffness * j.yaw - damping * j.vYaw) * dt;
+    j.vPitch += (-stiffness * j.pitch - damping * j.vPitch) * dt;
+    j.vRoll += (-stiffness * j.roll - damping * j.vRoll) * dt;
+    j.yaw += j.vYaw * dt;
+    j.pitch += j.vPitch * dt;
+    j.roll += j.vRoll * dt;
+
+    // Combine everything into the final angles
+    camera.yaw = camera.yawSpinAngle + motion.yawSwing * Math.sin(camera.clock * 0.7) + j.yaw;
+    camera.pitch = clamp(motion.basePitch + motion.pitchSwing * Math.sin(camera.clock * 0.53 + 1.3) + j.pitch, -1.1, 1.1);
+    const roll = camera.roll + j.roll;
+
+    view.matrix = buildRotationMatrix(camera.yaw, camera.pitch, roll);
+
+    // Screen shake fades out quickly
+    state.shake = Math.max(0, state.shake - dt * 30);
+    view.shakeX = state.shake ? randomBetween(-state.shake, state.shake) : 0;
+    view.shakeY = state.shake ? randomBetween(-state.shake, state.shake) : 0;
+  }
+
+  // Give the camera a random kick (called when the ball hits a paddle)
+  function kickCamera() {
+    const motion = GAME_SETTINGS.motionLevels[settings.motion];
+    if (motion.jolt === 0) return;
+    const strength = motion.jolt * (isDemo() ? 0.4 : 1) * 8;
+    camera.jolt.vYaw += randomBetween(-1, 1) * strength;
+    camera.jolt.vPitch += randomBetween(-1, 1) * strength * 0.7;
+    camera.jolt.vRoll += randomBetween(-1, 1) * strength;
+    // Sometimes the spin changes direction, just to keep you guessing
+    if (Math.random() < 0.3) camera.rollDirection *= -1;
+  }
+
+
+  /* ==========================================================================
+     13. PADDLES (you and the computer)
+     ========================================================================== */
+
+  // Keep a paddle's center inside the box
+  function clampPaddle(paddle) {
+    paddle.x = clamp(paddle.x, -HALF_WIDTH + PADDLE_HALF_W, HALF_WIDTH - PADDLE_HALF_W);
+    paddle.y = clamp(paddle.y, -HALF_HEIGHT + PADDLE_HALF_H, HALF_HEIGHT - PADDLE_HALF_H);
+  }
+
+  // Move a paddle toward a target spot, but no faster than maxSpeed
+  function movePaddleToward(paddle, targetX, targetY, maxSpeed, dt) {
+    const dx = targetX - paddle.x;
+    const dy = targetY - paddle.y;
+    const distance = Math.hypot(dx, dy);
+    const maxStep = maxSpeed * dt;
+    if (distance > maxStep) {
+      paddle.x += (dx / distance) * maxStep;
+      paddle.y += (dy / distance) * maxStep;
+    } else {
+      paddle.x = targetX;
+      paddle.y = targetY;
+    }
+    clampPaddle(paddle);
+  }
+
+  // Where will the ball be when it reaches depth z? (bouncing off the walls on the way)
+  function predictBallAt(z) {
+    const ball = state.ball;
+    if (ball.vz === 0) return { x: ball.x, y: ball.y };
+    const timeToArrive = Math.max(0, (z - ball.z) / ball.vz);
+    return {
+      x: foldIntoRange(ball.x + ball.vx * timeToArrive, -HALF_WIDTH + BALL_RADIUS, HALF_WIDTH - BALL_RADIUS),
+      y: foldIntoRange(ball.y + ball.vy * timeToArrive, -HALF_HEIGHT + BALL_RADIUS, HALF_HEIGHT - BALL_RADIUS)
+    };
+  }
+
+  function updatePlayer(dt) {
+    const player = state.player;
+    const oldX = player.x, oldY = player.y;
+
+    // DEMO MODE: the computer moves your paddle for you
+    if (isDemo()) {
+      if (state.ball.vz > 0) {
+        const guess = predictBallAt(PLAYER_Z - BALL_RADIUS);
+        movePaddleToward(player, guess.x, guess.y, 11, dt);
+      }
+      return;
+    }
+
+    // MOUSE / TOUCH: the paddle follows the spot under your pointer
+    if (inputMode === "pointer" && pointer.active) {
+      const hit = screenToPlane(pointer.screenX, pointer.screenY, PLAYER_Z);
+      if (hit) {
+        player.targetX = hit.x;
+        player.targetY = hit.y;
+      }
+    }
+
+    // KEYBOARD: arrow keys / WASD
+    const inputX = (keysDown.has("right") ? 1 : 0) - (keysDown.has("left") ? 1 : 0);
+    const inputY = (keysDown.has("up") ? 1 : 0) - (keysDown.has("down") ? 1 : 0);
+
+    if (inputX !== 0 || inputY !== 0) {
+      let moveX, moveY;
+
+      if (settings.cameraRelativeControls) {
+        // "Right" means right ON THE SCREEN, even when the camera is spinning.
+        // Row 0 of the camera matrix tells us which way screen-right points in the box,
+        // and row 1 tells us which way screen-up points.
+        const m = view.matrix;
+        moveX = m[0][0] * inputX + m[1][0] * inputY;
+        moveY = m[0][1] * inputX + m[1][1] * inputY;
+      } else {
+        // "Right" means right inside the box, no matter how the camera is turned
+        moveX = inputX;
+        moveY = inputY;
+      }
+
+      // Make diagonal movement the same speed as straight movement
+      const length = Math.hypot(moveX, moveY) || 1;
+      const step = GAME_SETTINGS.physics.keyboardSpeed * dt;
+      player.targetX = player.x + (moveX / length) * step;
+      player.targetY = player.y + (moveY / length) * step;
+    }
+
+    // Keep the target inside the box, then glide toward it
+    player.targetX = clamp(player.targetX, -HALF_WIDTH + PADDLE_HALF_W, HALF_WIDTH - PADDLE_HALF_W);
+    player.targetY = clamp(player.targetY, -HALF_HEIGHT + PADDLE_HALF_H, HALF_HEIGHT - PADDLE_HALF_H);
+    movePaddleToward(player, player.targetX, player.targetY, GAME_SETTINGS.physics.playerPaddleSpeed, dt);
+
+    // Remember how fast the paddle is moving (used to put spin on the ball)
+    if (dt > 0) {
+      player.vx = player.vx * 0.6 + ((player.x - oldX) / dt) * 0.4;
+      player.vy = player.vy * 0.6 + ((player.y - oldY) / dt) * 0.4;
+    }
+  }
+
+  // Each time the ball heads toward the CPU, it picks how far off its aim will be.
+  // Faster balls make the CPU less accurate.
+  function chooseCpuAimError() {
+    const skill = GAME_SETTINGS.difficulty[settings.difficulty];
+    const speed = Math.abs(state.ball.vz) || GAME_SETTINGS.physics.serveSpeed;
+    // At serve speed the error is about 80% of cpuError; at top speed it is about 160%
+    const errorSize = skill.cpuError * (0.6 + (speed / GAME_SETTINGS.physics.maxBallSpeed) * 1.0);
+    state.cpu.aimOffsetX = randomBetween(-1, 1) * errorSize;
+    state.cpu.aimOffsetY = randomBetween(-1, 1) * errorSize * 0.7;
+  }
+
+  function updateCpu(dt) {
+    const cpu = state.cpu;
+    const ball = state.ball;
+    const skill = GAME_SETTINGS.difficulty[isDemo() ? "normal" : settings.difficulty];
+
+    const ballComing = state.phase === "rally" && ball.vz < 0;
+    const canSeeIt = ball.z < skill.reactionLine;
+
+    if (ballComing && canSeeIt) {
+      // Aim for where the ball will arrive, plus a little human-like error
+      const guess = predictBallAt(CPU_Z + BALL_RADIUS);
+      movePaddleToward(cpu, guess.x + cpu.aimOffsetX, guess.y + cpu.aimOffsetY, skill.cpuSpeed, dt);
+    } else {
+      // Otherwise drift slowly back toward the middle
+      movePaddleToward(cpu, ball.x * 0.3, ball.y * 0.3, skill.cpuSpeed * 0.3, dt);
+    }
+  }
+
+
+  /* ==========================================================================
+     14. BALL PHYSICS
+     ========================================================================== */
+
+  // Is the ball touching this paddle? (checks left/right and up/down overlap)
+  function paddleCoversBall(paddle) {
+    const ball = state.ball;
+    return Math.abs(ball.x - paddle.x) <= PADDLE_HALF_W + BALL_RADIUS &&
+           Math.abs(ball.y - paddle.y) <= PADDLE_HALF_H + BALL_RADIUS;
+  }
+
+  // Bounce the ball off a paddle and send it the other way
+  function bounceOffPaddle(paddle, paddleZ, newDirection, paddleVX, paddleVY) {
+    const ball = state.ball;
+    const physics = GAME_SETTINGS.physics;
+
+    // Put the ball right on the paddle's face so it doesn't get stuck inside it
+    ball.z = paddleZ + newDirection * BALL_RADIUS;
+
+    // Speed up a little with every hit
+    const speed = Math.min(Math.abs(ball.vz) * physics.speedUpPerHit, physics.maxBallSpeed);
+    ball.vz = speed * newDirection;
+
+    // Hitting near the paddle's edge angles the ball more (offset goes from -1 to +1)
+    const offsetX = (ball.x - paddle.x) / PADDLE_HALF_W;
+    const offsetY = (ball.y - paddle.y) / PADDLE_HALF_H;
+    ball.vx += offsetX * physics.paddleAngleStrength * speed * 0.35 + paddleVX * physics.paddleSpinStrength;
+    ball.vy += offsetY * physics.paddleAngleStrength * speed * 0.35 + paddleVY * physics.paddleSpinStrength;
+
+    // Don't let the ball go too sideways (it would take forever to arrive)
+    const maxSideways = speed * 0.85;
+    ball.vx = clamp(ball.vx, -maxSideways, maxSideways);
+    ball.vy = clamp(ball.vy, -maxSideways, maxSideways);
+
+    state.rally++;
+    updateRallyDisplay();
+    spawnSparks(ball.x, ball.y, ball.z, newDirection < 0 ? GAME_CONTENT.colors.player : GAME_CONTENT.colors.cpu, 22);
+    kickCamera();
+  }
+
+  function updateBall(dt) {
+    const ball = state.ball;
+    const previousZ = ball.z;
+
+    // Move the ball
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+    ball.z += ball.vz * dt;
+
+    // Bounce off the side walls, floor and ceiling.
+    // If the ball went past a wall, we mirror it back inside.
+    const maxX = HALF_WIDTH - BALL_RADIUS;
+    const maxY = HALF_HEIGHT - BALL_RADIUS;
+    if (ball.x > maxX)  { ball.x = 2 * maxX - ball.x;  ball.vx = -Math.abs(ball.vx); wallBounce(); }
+    if (ball.x < -maxX) { ball.x = -2 * maxX - ball.x; ball.vx = Math.abs(ball.vx);  wallBounce(); }
+    if (ball.y > maxY)  { ball.y = 2 * maxY - ball.y;  ball.vy = -Math.abs(ball.vy); wallBounce(); }
+    if (ball.y < -maxY) { ball.y = -2 * maxY - ball.y; ball.vy = Math.abs(ball.vy);  wallBounce(); }
+
+    // Did the ball just reach YOUR end?
+    const playerFace = PLAYER_Z - BALL_RADIUS;
+    if (ball.vz > 0 && previousZ < playerFace && ball.z >= playerFace) {
+      if (paddleCoversBall(state.player)) {
+        bounceOffPaddle(state.player, PLAYER_Z, -1, state.player.vx, state.player.vy);
+        sound.play("playerHit");
+        chooseCpuAimError();
+      }
+    }
+
+    // Did the ball just reach the CPU's end?
+    const cpuFace = CPU_Z + BALL_RADIUS;
+    if (ball.vz < 0 && previousZ > cpuFace && ball.z <= cpuFace) {
+      if (paddleCoversBall(state.cpu)) {
+        bounceOffPaddle(state.cpu, CPU_Z, 1, 0, 0);
+        sound.play("cpuHit");
+      }
+    }
+
+    // If the ball flew well past a paddle, someone scored
+    if (ball.z > PLAYER_Z + 1.5) pointScored("cpu");
+    else if (ball.z < CPU_Z - 1.5) pointScored("player");
+  }
+
+  function wallBounce() {
+    sound.play("wall");
+    spawnSparks(state.ball.x, state.ball.y, state.ball.z, GAME_CONTENT.colors.court, 6);
+  }
+
+  // Little glowing sparks that fly out and fade
+  function spawnSparks(x, y, z, color, count) {
+    for (let i = 0; i < count; i++) {
+      state.particles.push({
+        x, y, z,
+        vx: randomBetween(-5, 5), vy: randomBetween(-5, 5), vz: randomBetween(-5, 5),
+        life: randomBetween(0.3, 0.7),
+        color
+      });
+    }
+    // Keep the list from growing forever
+    if (state.particles.length > 300) state.particles.splice(0, state.particles.length - 300);
+  }
+
+  function updateParticles(dt) {
+    for (const p of state.particles) {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+      p.vx *= 0.95; p.vy *= 0.95; p.vz *= 0.95;   // air drag
+      p.life -= dt;
+    }
+    state.particles = state.particles.filter(p => p.life > 0);
+  }
+
+
+  /* ==========================================================================
+     15. THE MAIN UPDATE (runs every frame)
+     ========================================================================== */
+  function update(dt) {
+    // While paused, nothing moves
+    if (state.mode === "paused") return;
+
+    updateFocalLength();
+    updateCamera(dt);
+    updatePlayer(dt);
+    updateCpu(dt);
+
+    if (state.phase === "serve") {
+      state.serveTimer -= dt;
+      if (state.serveTimer <= 0) launchBall();
+    } else {
+      // Split each frame into small steps so fast balls don't skip through things
+      const steps = Math.ceil(dt / (1 / 240));
+      for (let i = 0; i < steps && state.phase === "rally"; i++) {
+        updateBall(dt / steps);
+      }
+    }
+
+    // Remember recent ball positions for the glowing tail
+    state.trail.push({ x: state.ball.x, y: state.ball.y, z: state.ball.z });
+    if (state.trail.length > 14) state.trail.shift();
+
+    updateParticles(dt);
+    state.flash = Math.max(0, state.flash - dt * 1.2);
+  }
+
+
+  /* ==========================================================================
+     16. DRAWING
+     We use "lighter" blending, which adds colors together like light.
+     That gives the neon glow, and it means drawing order doesn't matter
+     even when the camera flips around.
+     ========================================================================== */
+
+  // Draw a batch of 3D lines with a soft glow (a wide faint stroke + a thin bright one)
+  function strokeLines(lines, color, width, alpha) {
+    ctx.beginPath();
+    for (const [a, b] of lines) {
+      const pa = project(a[0], a[1], a[2]);
+      const pb = project(b[0], b[1], b[2]);
+      if (!pa || !pb) continue;
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+    }
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha * 0.22;
+    ctx.lineWidth = width * 4;
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawStars() {
+    const m = view.matrix;
+    ctx.fillStyle = GAME_CONTENT.colors.stars;
+    for (const star of STARS) {
+      // Stars are just directions, so we rotate them but don't move them
+      const camX = m[0][0] * star.x + m[0][1] * star.y + m[0][2] * star.z;
+      const camY = m[1][0] * star.x + m[1][1] * star.y + m[1][2] * star.z;
+      const camZ = m[2][0] * star.x + m[2][1] * star.y + m[2][2] * star.z;
+      if (camZ > -0.05) continue;   // this star is behind us
+      const sx = view.centerX + (camX / -camZ) * view.focal * 0.6;
+      const sy = view.centerY - (camY / -camZ) * view.focal * 0.6;
+      if (sx < 0 || sy < 0 || sx > view.width || sy > view.height) continue;
+      ctx.globalAlpha = star.brightness;
+      ctx.fillRect(sx, sy, star.size, star.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCourt() {
+    const colors = GAME_CONTENT.colors;
+    strokeLines(COURT_LINES.dim, colors.court, 1, 0.35);
+    strokeLines(COURT_LINES.edges, colors.court, 2, 0.9);
+    strokeLines(COURT_LINES.center, colors.courtCenter, 1.5, 0.7);
+    strokeLines(COURT_LINES.cpuEnd, colors.cpu, 2, 0.75);
+    strokeLines(COURT_LINES.playerEnd, colors.player, 2, 0.75);
+  }
+
+  // A glowing ring around the box at the ball's depth, plus dots on each wall.
+  // This is the main clue for judging how far away the ball is.
+  function drawBallDepthMarkers() {
+    const ball = state.ball;
+    strokeLines(rectangleAtDepth(ball.z), GAME_CONTENT.colors.ball, 1.5, 0.55);
+
+    const wallDots = [
+      [ball.x, -HALF_HEIGHT, ball.z],  // floor
+      [ball.x, HALF_HEIGHT, ball.z],   // ceiling
+      [-HALF_WIDTH, ball.y, ball.z],   // left wall
+      [HALF_WIDTH, ball.y, ball.z]     // right wall
+    ];
+    ctx.fillStyle = GAME_CONTENT.colors.ball;
+    for (const [x, y, z] of wallDots) {
+      const p = project(x, y, z);
+      if (!p) continue;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(2, BALL_RADIUS * 0.5 * p.scale), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Draw a paddle as a see-through glowing rectangle
+  function drawPaddle(paddle, z, color, glow) {
+    const corners = [
+      project(paddle.x - PADDLE_HALF_W, paddle.y - PADDLE_HALF_H, z),
+      project(paddle.x + PADDLE_HALF_W, paddle.y - PADDLE_HALF_H, z),
+      project(paddle.x + PADDLE_HALF_W, paddle.y + PADDLE_HALF_H, z),
+      project(paddle.x - PADDLE_HALF_W, paddle.y + PADDLE_HALF_H, z)
+    ];
+    if (corners.some(c => c === null)) return;
+
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+    ctx.closePath();
+
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.14 + glow * 0.25;
+    ctx.fill();
+
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 9;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // A small cross in the middle so you can see the paddle's center
+    strokeLines([
+      [[paddle.x - 0.3, paddle.y, z], [paddle.x + 0.3, paddle.y, z]],
+      [[paddle.x, paddle.y - 0.3, z], [paddle.x, paddle.y + 0.3, z]]
+    ], color, 1.5, 0.8);
+  }
+
+  function drawBall() {
+    const ball = state.ball;
+    const color = GAME_CONTENT.colors.ball;
+
+    // The glowing tail: older positions are smaller and fainter
+    ctx.fillStyle = color;
+    state.trail.forEach((spot, index) => {
+      const p = project(spot.x, spot.y, spot.z);
+      if (!p) return;
+      const age = index / state.trail.length;
+      ctx.globalAlpha = age * 0.35;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, BALL_RADIUS * p.scale * age, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // The ball itself, with a soft halo
+    const p = project(ball.x, ball.y, ball.z);
+    if (!p) return;
+    const radius = Math.max(3, BALL_RADIUS * p.scale);
+    const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 3);
+    halo.addColorStop(0, color);
+    halo.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = halo;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawParticles() {
+    for (const spark of state.particles) {
+      const p = project(spark.x, spark.y, spark.z);
+      if (!p) continue;
+      const size = Math.max(1.5, 0.08 * p.scale);
+      ctx.globalAlpha = clamp(spark.life * 2, 0, 1);
+      ctx.fillStyle = spark.color;
+      ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function render() {
+    const motion = GAME_SETTINGS.motionLevels[settings.motion];
+
+    // Background: with "trails" on we paint a see-through layer instead of
+    // wiping the screen, so the last few frames leave streaks behind.
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = motion.trails && state.mode !== "paused" ? "rgba(4, 5, 15, 0.4)" : GAME_CONTENT.colors.background;
+    ctx.fillRect(0, 0, view.width, view.height);
+
+    // Additive "light" blending for all the neon things
+    ctx.globalCompositeOperation = "lighter";
+    drawStars();
+    drawCourt();
+    drawBallDepthMarkers();
+
+    // Paddles light up more as the ball gets close to them
+    const ball = state.ball;
+    const cpuGlow = clamp(1 - Math.abs(ball.z - CPU_Z) / 6, 0, 1);
+    const playerGlow = clamp(1 - Math.abs(ball.z - PLAYER_Z) / 6, 0, 1);
+    drawPaddle(state.cpu, CPU_Z, GAME_CONTENT.colors.cpu, cpuGlow);
+    drawBall();
+    drawParticles();
+    drawPaddle(state.player, PLAYER_Z, GAME_CONTENT.colors.player, playerGlow);
+
+    // A quick colored flash when someone scores
+    ctx.globalCompositeOperation = "source-over";
+    if (state.flash > 0) {
+      // With trails on, old frames only fade 40% per frame, so the flash would
+      // pile up. Scaling it by the same 0.4 keeps it at the intended strength.
+      ctx.globalAlpha = state.flash * (motion.trails ? 0.4 : 1);
+      ctx.fillStyle = state.flashColor;
+      ctx.fillRect(0, 0, view.width, view.height);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+
+  /* ==========================================================================
+     17. SCOREBOARD, BANNER AND SCREEN READER ANNOUNCEMENTS
+     ========================================================================== */
+  function updateScoreboard() {
+    ui.playerScore.textContent = state.playerScore;
+    ui.cpuScore.textContent = state.cpuScore;
+  }
+
+  function updateRallyDisplay() {
+    ui.rally.textContent = state.rally >= 2 && !isDemo() ? `Rally ${state.rally}` : "";
+  }
+
+  let bannerTimeout = null;
+  function showBanner(text, color, durationMs) {
+    ui.banner.textContent = text;
+    ui.banner.style.color = color;
+    ui.banner.classList.add("is-visible");
+    clearTimeout(bannerTimeout);
+    bannerTimeout = setTimeout(() => ui.banner.classList.remove("is-visible"), durationMs);
+  }
+
+  // Send a message to screen readers. Clearing first makes repeats get read too.
+  function announce(message) {
+    ui.announcer.textContent = "";
+    setTimeout(() => { ui.announcer.textContent = message; }, 50);
+  }
+
+
+  /* ==========================================================================
+     18. THE DIALOG (menu, pause screen, game over screen)
+     ========================================================================== */
+  function openDialog(kind, title, message) {
+    ui.dialogTitle.textContent = title;
+    ui.dialogMessage.textContent = message;
+
+    if (kind === "menu") {
+      ui.startButton.textContent = "Start game";
+      ui.restartButton.hidden = true;
+    } else if (kind === "paused") {
+      ui.startButton.textContent = "Resume";
+      ui.restartButton.hidden = false;
+    } else {
+      ui.startButton.textContent = "Play again";
+      ui.restartButton.hidden = true;
+    }
+
+    if (!ui.dialog.open) ui.dialog.showModal();
+    ui.startButton.focus();
+  }
+
+  function closeDialog() {
+    if (ui.dialog.open) ui.dialog.close();
+  }
+
+  // Fill the drop-down menus from the settings at the top of the file
+  function buildSettingsMenus() {
+    for (const [key, level] of Object.entries(GAME_SETTINGS.difficulty)) {
+      ui.difficultySelect.add(new Option(level.label, key));
+    }
+    for (const [key, level] of Object.entries(GAME_SETTINGS.motionLevels)) {
+      ui.motionSelect.add(new Option(level.label, key));
+    }
+    ui.difficultySelect.value = settings.difficulty;
+    ui.motionSelect.value = settings.motion;
+    ui.cameraControlsCheckbox.checked = settings.cameraRelativeControls;
+    ui.soundCheckbox.checked = settings.sound;
+  }
+
+  // Cycle through the camera motion levels (keyboard shortcut C)
+  function cycleMotionLevel() {
+    const keys = Object.keys(GAME_SETTINGS.motionLevels);
+    const next = keys[(keys.indexOf(settings.motion) + 1) % keys.length];
+    setMotionLevel(next);
+    announce(`Camera motion: ${GAME_SETTINGS.motionLevels[next].label}.`);
+    showBanner(GAME_SETTINGS.motionLevels[next].label, GAME_CONTENT.colors.courtCenter, 900);
+  }
+
+  function setMotionLevel(key) {
+    settings.motion = key;
+    ui.motionSelect.value = key;
+    saveSettings();
+    // Going to "off" straightens the camera right away
+    if (key === "off") {
+      camera.roll = 0;
+      camera.yawSpinAngle = 0;
+      camera.jolt = { yaw: 0, pitch: 0, roll: 0, vYaw: 0, vPitch: 0, vRoll: 0 };
+    }
+  }
+
+  function toggleSound() {
+    settings.sound = !settings.sound;
+    ui.soundCheckbox.checked = settings.sound;
+    saveSettings();
+    announce(settings.sound ? "Sound on." : "Sound off.");
+  }
+
+
+  /* ==========================================================================
+     19. EVENT LISTENERS (keyboard, mouse, touch, buttons)
+     ========================================================================== */
+
+  // Which keys move the paddle (lowercase key names)
+  const MOVE_KEYS = {
+    arrowleft: "left", a: "left",
+    arrowright: "right", d: "right",
+    arrowup: "up", w: "up",
+    arrowdown: "down", s: "down"
+  };
+
+  document.addEventListener("keydown", (event) => {
+    // While the dialog is open, let it handle the keyboard normally
+    if (ui.dialog.open) return;
+    // Ignore keyboard shortcuts combined with Ctrl/Cmd/Alt (leave browser shortcuts alone)
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    const key = event.key.toLowerCase();
+
+    if (MOVE_KEYS[key]) {
+      event.preventDefault();          // stop the arrow keys from scrolling the page
+      keysDown.add(MOVE_KEYS[key]);
+      inputMode = "keyboard";
+    } else if (key === " " || key === "p" || key === "escape") {
+      event.preventDefault();
+      if (!event.repeat) togglePause();
+    } else if (key === "c" && !event.repeat) {
+      cycleMotionLevel();
+    } else if (key === "m" && !event.repeat) {
+      toggleSound();
+    }
+  });
+
+  document.addEventListener("keyup", (event) => {
+    const key = event.key.toLowerCase();
+    if (MOVE_KEYS[key]) keysDown.delete(MOVE_KEYS[key]);
+  });
+
+  // If the window loses focus, forget held keys (otherwise the paddle keeps sliding)
+  window.addEventListener("blur", () => keysDown.clear());
+
+  // Pause automatically if you switch tabs or apps
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseGame();
+  });
+
+  // ---- Mouse and touch ----
+  function updatePointer(event) {
+    pointer.screenX = event.clientX;
+    pointer.screenY = event.clientY;
+    inputMode = "pointer";
+  }
+
+  canvas.addEventListener("pointerdown", (event) => {
+    pointer.active = true;
+    updatePointer(event);
+    // Keep receiving this finger's moves even if it slides off the canvas
+    if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    // A mouse follows while hovering; a finger only while touching the screen
+    if (event.pointerType === "mouse") pointer.active = true;
+    if (pointer.active) updatePointer(event);
+  });
+
+  canvas.addEventListener("pointerup", (event) => {
+    if (event.pointerType !== "mouse") pointer.active = false;
+  });
+  canvas.addEventListener("pointercancel", () => { pointer.active = false; });
+  canvas.addEventListener("pointerleave", (event) => {
+    if (event.pointerType === "mouse") pointer.active = false;
+  });
+
+  // ---- Buttons ----
+  ui.pauseButton.addEventListener("click", pauseGame);
+
+  ui.startButton.addEventListener("click", () => {
+    if (state.mode === "paused") resumeGame();
+    else startNewGame();
+  });
+
+  ui.restartButton.addEventListener("click", startNewGame);
+
+  // Escape inside the dialog: resume if paused, otherwise keep the menu open
+  ui.dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    if (state.mode === "paused") resumeGame();
+  });
+
+  // The settings form never actually submits anywhere
+  ui.settingsForm.addEventListener("submit", (event) => event.preventDefault());
+
+  // ---- Settings ----
+  ui.difficultySelect.addEventListener("change", () => {
+    settings.difficulty = ui.difficultySelect.value;
+    saveSettings();
+  });
+  ui.motionSelect.addEventListener("change", () => setMotionLevel(ui.motionSelect.value));
+  ui.cameraControlsCheckbox.addEventListener("change", () => {
+    settings.cameraRelativeControls = ui.cameraControlsCheckbox.checked;
+    saveSettings();
+  });
+  ui.soundCheckbox.addEventListener("change", () => {
+    settings.sound = ui.soundCheckbox.checked;
+    saveSettings();
+  });
+
+  window.addEventListener("resize", resizeCanvas);
+
+
+  /* ==========================================================================
+     20. "PUT IT ON YOUR HOME SCREEN" (install section)
+     ========================================================================== */
+
+  // Is the game running as an installed app right now?
+  //   "display-mode: standalone" is true in installed apps on most browsers.
+  //   navigator.standalone is the older iPhone/iPad way of saying the same thing.
+  const standaloneQuery = window.matchMedia("(display-mode: standalone)");
+  function isRunningAsInstalledApp() {
+    return standaloneQuery.matches || window.navigator.standalone === true;
+  }
+
+  // Build the step-by-step lists from GAME_CONTENT.installSection.
+  // We use textContent (never innerHTML) so the text is always treated as
+  // plain words and can never be run as code.
+  function buildInstallSection() {
+    const content = GAME_CONTENT.installSection;
+    ui.installSummary.textContent = content.summary;
+    ui.installIntro.textContent = content.intro;
+    ui.installButton.textContent = content.installButton;
+
+    for (const platform of content.platforms) {
+      const heading = document.createElement("h3");
+      heading.textContent = platform.heading;
+      const list = document.createElement("ol");
+      for (const step of platform.steps) {
+        const item = document.createElement("li");
+        item.textContent = step;
+        list.appendChild(item);
+      }
+      ui.installPlatforms.append(heading, list);
+    }
+    updateInstallSection();
+  }
+
+  // Hide the whole section when the game is already installed
+  function updateInstallSection() {
+    ui.installSection.hidden = isRunningAsInstalledApp();
+  }
+  standaloneQuery.addEventListener("change", updateInstallSection);
+
+  // Chrome, Edge and Android can show their own install window when a button
+  // is pressed. They tell us it's available with the "beforeinstallprompt"
+  // event; we save that event and reveal the "Install now" button.
+  let savedInstallPrompt = null;
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();          // we'll show it from our own button instead
+    savedInstallPrompt = event;
+    ui.installButton.hidden = false;
+  });
+
+  ui.installButton.addEventListener("click", async () => {
+    if (!savedInstallPrompt) return;
+    savedInstallPrompt.prompt();      // opens the browser's install window
+    await savedInstallPrompt.userChoice;
+    savedInstallPrompt = null;        // each saved prompt can only be used once
+    ui.installButton.hidden = true;
+  });
+
+  // Once the app is installed, the instructions aren't needed any more
+  window.addEventListener("appinstalled", () => {
+    savedInstallPrompt = null;
+    ui.installButton.hidden = true;
+    ui.installSection.hidden = true;
+    announce("Vertigo Pong is installed.");
+  });
+
+
+  /* ==========================================================================
+     21. START EVERYTHING
+     ========================================================================== */
+  function init() {
+    // Put the names from the content section on the page
+    document.title = `${GAME_CONTENT.title} - 3D Pong with a spinning camera`;
+    ui.playerLabel.textContent = GAME_CONTENT.playerName;
+    ui.cpuLabel.textContent = GAME_CONTENT.opponentName;
+    ui.playerLabel.style.color = GAME_CONTENT.colors.player;
+    ui.cpuLabel.style.color = GAME_CONTENT.colors.cpu;
+
+    buildSettingsMenus();
+    buildInstallSection();
+    resizeCanvas();
+    updateScoreboard();
+    startServe(1);  // starts the demo that plays behind the menu
+    openDialog("menu", GAME_CONTENT.title, GAME_CONTENT.tagline);
+
+    // The game loop: update, draw, repeat (about 60 times a second)
+    let lastTime = performance.now();
+    function frame(now) {
+      // Cap the time step so a slow frame (or a hidden tab) can't teleport the ball
+      const dt = Math.min((now - lastTime) / 1000, 1 / 30);
+      lastTime = now;
+      update(dt);
+      render();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  init();
+  </script>
+</body>
+</html>
